@@ -1,7 +1,10 @@
+# don't save archive
 *.7z
+# Not personal mods 
 sve/
 AlchHelp/
 QuickLoot/
 Pickpocket/
+TestJournal/
 inom - Inventory mouse wheel/
 readme.txt
