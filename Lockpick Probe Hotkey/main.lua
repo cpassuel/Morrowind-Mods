@@ -247,6 +247,35 @@ end
 
 
 --[[
+	mod config menu
+]]
+
+local function createtableVar(id)
+	return mwse.mcm.createTableVariable{
+		id = id,
+		table = config
+	}  
+end
+
+
+local function registerModConfig()
+    local template = mwse.mcm.createTemplate(modName)
+	template:saveOnClose(modConfig, config)
+	
+	local page = template:createPage()
+	local catMain = page:createCategory(modName)
+	catMain:createYesNoButton {
+		label = "Enable " .. modName,
+		description = "Allows you to Enable or Disable the mod",
+		variable = createtableVar("modEnabled"),
+		defaultSetting = true,
+	}
+	
+	mwse.mcm.register(template)
+end
+
+
+--[[
 	constructor
 ]]
 
@@ -257,3 +286,4 @@ local function initialize()
 	mwse.log(modName)
 end
 event.register("initialized", initialize)
+event.register("modConfigReady", registerModConfig)
