@@ -212,6 +212,13 @@ local function onMouseButtonDown(e)
 		return
 	end
 	
+	if not config.modEnabled then
+		return
+	end
+	
+	-- debug level ??????
+	level=0
+	
 	if activatedTarget ~= nil then
 		if (activatedTarget.object.objectType == tes3.objectType.container) or (activatedTarget.object.objectType == tes3.objectType.door) then
 			-- door or container
@@ -226,15 +233,15 @@ local function onMouseButtonDown(e)
 			
 				if isLocked and isTrapped then
 					-- locked and trapped
-					--tes3.messageBox("Trapped and Lock Level: " .. lockNode.level)
+					tes3.messageBox("Trapped and Lock Level: " .. lockNode.level)
 				else
 					if isLocked then
 						-- only locked
-						--tes3.messageBox("Lock Level: " .. lockNode.level)
+						tes3.messageBox("Lock Level: " .. lockNode.level)
 						tes3.messageBox("Unlock chance %6.2f", getLockpickChance(lockNode.level, 1.1))
 					elseif isTrapped then
 						-- only trapped
-						--tes3.messageBox("Trapped")
+						tes3.messageBox("Trapped")
 					end
 				end
 			end
@@ -244,6 +251,19 @@ local function onMouseButtonDown(e)
 		end
 	end
 end
+
+
+--[[
+	constructor
+]]
+
+local function initialize()
+	event.register("mouseButtonDown", onMouseButtonDown)
+	event.register("activationTargetChanged", onActivationTargetChanged)
+	-- filtrer les hotkey à récuperer => necessite un refresh en cas de changement (unregister/register)
+	mwse.log(modName)
+end
+event.register("initialized", initialize)
 
 
 --[[
@@ -263,6 +283,7 @@ local function registerModConfig()
 	template:saveOnClose(modConfig, config)
 	
 	local page = template:createPage()
+	
 	local catMain = page:createCategory(modName)
 	catMain:createYesNoButton {
 		label = "Enable " .. modName,
@@ -274,16 +295,4 @@ local function registerModConfig()
 	mwse.mcm.register(template)
 end
 
-
---[[
-	constructor
-]]
-
-local function initialize()
-	event.register("mouseButtonDown", onMouseButtonDown)
-	event.register("activationTargetChanged", onActivationTargetChanged)
-	-- filtrer les hotkey à récuperer => necessite un refresh en cas de changement (unregister/register)
-	mwse.log(modName)
-end
-event.register("initialized", initialize)
 event.register("modConfigReady", registerModConfig)
