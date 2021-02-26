@@ -1,0 +1,126 @@
+=====================================================================================
+                               Morrowind Mouse Control                                      
+                                   Author: cpassuel
+                                     Version 1.3.3                                   
+=====================================================================================
+
+ INDEX:
+
+ -> Requirements
+ -> About this Mod
+ -> Installation
+ -> Playing this Plugin
+ -> Known Bugs & Issues
+ -> Version History
+ -> Incompatibilities & Save Game Warnings
+ -> Credits & Usage
+
+=====================================================================================
+ REQUIREMENTS:
+=====================================================================================
+
+ This is a MWSE-Lua mod, and requires a valid installation of MWSE 2.1 or later.
+
+    * Morrowind, Tribunal, and Bloodmoon.
+    * MGE-XE 0.10.0
+    * MWSE 2.1
+
+=====================================================================================
+ ABOUT THIS MOD:
+=====================================================================================
+
+ This mod allows you to replace all keyboard commands for Weapon Ready/spell Ready 
+ with mouse buttons and to select weapons/spells/light with mouse wheel.
+ 
+ You can switch between Weapon Ready / Not Ready / Spell Ready modes with the mouse
+ middle button. In Weapon Ready mode you will cycle weapons with the mouse wheel and
+ in Spell Ready mode you will cycle spells/powers.
+ 
+ You can also draw weapon with left click (when in not ready mod) like in Skyrim
+
+ Now, in Not Ready mode, you can cycle spells or weapons or turn light on and off 
+ depending on your settings. If light is equiped when switching to weapon, light
+ will stay equiped.
+
+ Modifier keys (Ctrl, Alt, Windows) with mouse wheel are now supported so you can
+ define a specific action (cycle spell or cycle weapon) when using mouse wheel while
+ holding down a modifier key. For example, in Weapon Ready mode you still can cycle
+ spells with mouse wheel and CTRL key for example.
+ 
+ You can configure action for each modifier key in Mod Config Menu
+
+=====================================================================================
+ INSTALLATION:
+=====================================================================================
+
+ Extract the archive into your Morrowind installation directory. The mod should
+ contain the following files:
+    .\Data Files\MWSE\mods\Morrowind Mouse Control\main.lua
+
+ To uninstall, just delete Data Files\MWSE\mods\Morrowind Mouse Control folder
+
+=====================================================================================
+ PLAYING THIS PLUGIN:
+=====================================================================================
+
+ There is no esp file to activate. Simply install the MWSE 2.1 and this mod, and
+ load up an old or new game.
+
+=====================================================================================
+ KNOWN ISSUES OR BUGS:
+=====================================================================================
+
+ If some prev/next spell/weapon commands are mapped to mouse, this mod may not work.
+ It is intended to have all commands mapped to keyboard
+ 
+ Please report any issues on the Nexus page 
+ https://www.nexusmods.com/morrowind/mods/48254
+
+=====================================================================================
+ VERSION HISTORY
+=====================================================================================
+
+ 1.0   [2020-31-05]: Initial release.
+ 1.1   [2020-06-06]: Added draw weapon with left click (i.e. Skyrim mode)
+ 1.2   [2020-16-06]: Added cycling Weapon/Spell in Not Ready mode
+ 1.2.1 [2020-21-06]: Added QuickLoot (mortimermcmire) mod compatibility
+ 1.2.2 [2020-09-07]: Added PickPocket (mortimermcmire) mod compatibility
+ 1.3   [2020-12-07]: Added torch/light support (based on Torch Hotkey) and modifier key actions
+ 1.3.1 [2020-01-08]: Added ability to disable mouse wheel cycling in third person view in MCM
+ 1.3.2 [2020-20-09]: Small fix: now can switch mode with QuickLoot/Pickpocket mod activated
+ 1.3.3 [2020-06-10]: Small fix: Prevents you to switch to Weapon Ready mode during character creation (to avoid punching Jiub)
+ 
+=====================================================================================
+ INCOMPATIBILITIES & SAVED GAME WARNINGS:
+=====================================================================================
+
+ This mod does not alter the save game contents in any way, and is clean to run with
+ any other known mod. It may only conflict with mods using mouse wheel, left or middle
+ button in game. If a conflict is found, please report it on the Nexus page
+
+ https://www.nexusmods.com/morrowind/mods/48254
+
+=====================================================================================
+ CREDITS & USAGE:
+=====================================================================================
+
+ Special thanks to NullCascade and team: for MWSE lua scripting development and docs
+ Thanks to DarkElfGuy for inspiring people to create and release mods for the yearly
+ modathon and everyone who has contributed and continues to contribute to Morrowind
+ Modding
+
+ Thanks for Remiros, Greatness7 and NullCascade to let me use Torch Hotkey mod code
+ https://www.nexusmods.com/morrowind/mods/45747
+
+ This plugin is freely distributable and modifiable, as long as this readme
+ file accompanies it and credit is given to the original author. By downloading
+ and running this plugin, you acknowledge the following :
+
+ - You have read and understood this readme file.
+ - You acknowledge that the author of this plugin accepts no responsibility for 
+   damage to your game saves, operating system, computer, etc, 
+   when using this plugin.
+
+ Copyright 2020 cpassuel
+
+ NOTE: Please do not upload this plugin for distribution without my permission.
