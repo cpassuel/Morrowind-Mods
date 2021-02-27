@@ -20,7 +20,7 @@ local modAuthor= "cpassuel"
 	
 	Gestion de Hidden trap
 	
-	mininalUnlockChance
+	mininalUnlockChance (add a fail back option ?)
 	
 	Lockpick : equiper le lockpick minimal qui permet de dévérouiller
 ]]
@@ -66,6 +66,7 @@ local modDefaultConfig = {
 	-- hotkey mapping 
 	probeHotkey = 0,
 	lockpickHotkey = 0,
+	mininalUnlockChance = 0,	-- equip a lockpick with a minimal unlock chance
 }
 
 
@@ -99,6 +100,8 @@ end
 -- https://mwse.readthedocs.io/en/latest/lua/type/tes3statistic.html
 
 -- TODO calculer la quality minimale du lockpick pour le niveau de lock donné
+
+
 --[[
 	event handlers 
 ]]
@@ -112,7 +115,7 @@ end
 
 --
 local function getPlayerStats()
-	-- sklil et attributes
+	-- skill et attributes
 	local player = tes3.mobilePlayer
 	
 	playerAttribute.security = player.security.current
@@ -126,7 +129,7 @@ end
 
 -- 1262702412 	LOCK 	Lockpick
 -- 1112494672 	PROB 	Probe
--- return a lockpick with a minimium quality
+-- return a lockpick with a minimium quality (current quality between 1.0 and 5.0)
 -- https://en.uesp.net/wiki/Morrowind:Security
 local function getLockpick(minQuality)
 	local inventory = tes3.player.object.inventory
@@ -216,9 +219,6 @@ local function onMouseButtonDown(e)
 		return
 	end
 	
-	-- debug level ??????
-	level=0
-	
 	if activatedTarget ~= nil then
 		if (activatedTarget.object.objectType == tes3.objectType.container) or (activatedTarget.object.objectType == tes3.objectType.door) then
 			-- door or container
@@ -228,8 +228,17 @@ local function onMouseButtonDown(e)
 				local isTrapped = (lockNode.trap ~= nil)
 				local isKeyLock = (lockNode.key ~= nil)
 			
-				equipLockPick(getLockpick(level))
-				getPlayerStats()
+				-- get the minimal quality of the lockpick
+				minQuality =  getMinLockPickMultiplier(lockNode.level)
+
+				lockpick = getLockpick(minQuality)
+				-- 
+				if lockpick ~= nil then
+					equipLockPick(lockpick)
+					getPlayerStats()
+				else
+					tes3.messageBox("No lockpick with a quality > %6.2f", minQuality)
+				end
 			
 				if isLocked and isTrapped then
 					-- locked and trapped
