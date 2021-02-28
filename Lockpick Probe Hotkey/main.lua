@@ -131,6 +131,7 @@ end
 -- 1112494672 	PROB 	Probe
 -- return a lockpick with a minimium quality (current quality between 1.0 and 5.0)
 -- https://en.uesp.net/wiki/Morrowind:Security
+-- TODO return 2 result : lockpick or nil, current quality or maxquality https://www.lua.org/pil/5.1.html
 local function getLockpick(minQuality)
 	local inventory = tes3.player.object.inventory
 
@@ -166,6 +167,7 @@ end
 
 
 -- returns the minimal lockpick quality for the given locklevel
+-- TODO returns 2 lock quality: first with current fatigue, second with max fatigue
 local function getMinLockPickMultiplier(locklevel)
 	getPlayerStats()
 
@@ -220,6 +222,7 @@ local function onMouseButtonDown(e)
 	end
 	
 	if activatedTarget ~= nil then
+		-- check for door or container
 		if (activatedTarget.object.objectType == tes3.objectType.container) or (activatedTarget.object.objectType == tes3.objectType.door) then
 			-- door or container
 			local lockNode = activatedTarget.lockNode	-- peut être nil si pas locked, à verifier pour trapped
@@ -229,20 +232,25 @@ local function onMouseButtonDown(e)
 				local isKeyLock = (lockNode.key ~= nil)
 			
 				-- get the minimal quality of the lockpick
-				minQuality =  getMinLockPickMultiplier(lockNode.level)
+				local minQuality =  getMinLockPickMultiplier(lockNode.level)
 
-				lockpick = getLockpick(minQuality)
-				-- 
+				--
+				local lockpick = getLockpick(minQuality)
+
 				if lockpick ~= nil then
+					-- there is an available lockpick
 					equipLockPick(lockpick)
+					-- why getPlayerStats call ??? 
 					getPlayerStats()
 				else
-					tes3.messageBox("No lockpick with a quality > %6.2f", minQuality)
+					-- add check with max fatigue
+					tes3.messageBox("You don't have a good enough lockpick !")
 				end
 			
 				if isLocked and isTrapped then
 					-- locked and trapped
 					tes3.messageBox("Trapped and Lock Level: " .. lockNode.level)
+					-- equip probe
 				else
 					if isLocked then
 						-- only locked
