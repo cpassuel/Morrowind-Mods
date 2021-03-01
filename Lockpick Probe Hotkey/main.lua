@@ -134,22 +134,31 @@ end
 -- TODO return 2 result : lockpick or nil, current quality or maxquality https://www.lua.org/pil/5.1.html
 local function getLockpick(minQuality)
 	local inventory = tes3.player.object.inventory
-
+	local curquality
+	
+	curquality = 0.0
+	
     for _, v in pairs(inventory) do
         if v.object.objectType == 1262702412 then
 			--mwse.log("object = %s - %s - %d", v.object.name, v.object.objectType, v.count)
+			
+			-- calc max quality if no lockpick with minimal quality or current quality lockpick
+			if v.object.quality > curquality then
+				curquality = v.object.quality
+			end
+			
 			if v.object.quality >= minQuality then
 				-- Warning quality is a float value
 				mwse.log("Lockpick %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
-				return v.object
+				return v.object, curquality
 			end
         end
     end
-	return nil
+	return nil, curquality
 end
 
 
---
+-- return a probe or nil
 local function getProbe()
 	local inventory = tes3.player.object.inventory
 
@@ -166,14 +175,19 @@ local function getProbe()
 end
 
 
--- returns the minimal lockpick quality for the given locklevel
+-- returns the minimal lockpick quality for the given locklevel at current fatigue
+-- and at max fatigue
 -- TODO returns 2 lock quality: first with current fatigue, second with max fatigue
 local function getMinLockPickMultiplier(locklevel)
+	local lpQualCurFatigue, lpQualMaxFatigue
 	getPlayerStats()
 
 	-- lpmultminfull = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5)
 	-- lpmulmintcurrent = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5 * fatcurrent/fatmax)
-	return locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
+	lpQualCurFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
+	lpQualMaxFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5))
+
+	return lpQualCurFatigue, lpQualMaxFatigue
 end
 
 
@@ -232,10 +246,12 @@ local function onMouseButtonDown(e)
 				local isKeyLock = (lockNode.key ~= nil)
 			
 				-- get the minimal quality of the lockpick
-				local minQuality =  getMinLockPickMultiplier(lockNode.level)
+				local minQuality, minQualityMaxFat
+				minQuality, minQualityMaxFat =  getMinLockPickMultiplier(lockNode.level)
 
 				--
-				local lockpick = getLockpick(minQuality)
+				local lockpick, lpcurqual
+				lockpick, lpcurqual = getLockpick(minQuality)
 
 				if lockpick ~= nil then
 					-- there is an available lockpick
@@ -243,8 +259,13 @@ local function onMouseButtonDown(e)
 					-- why getPlayerStats call ??? 
 					getPlayerStats()
 				else
-					-- add check with max fatigue
-					tes3.messageBox("You don't have a good enough lockpick !")
+					-- no lockpick so lpcurqual = max lockpick quality available
+					if lpcurqual > minQualityMaxFat then
+						-- TODO equip anyway ?
+						tes3.messageBox("You need to regain fatigue to be able to open this object.")
+					else
+						tes3.messageBox("You don't have a good enough lockpick to open this object. try a spell !")
+					end
 				end
 			
 				if isLocked and isTrapped then
