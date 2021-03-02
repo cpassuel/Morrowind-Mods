@@ -148,7 +148,7 @@ local function getLockpick(minQuality)
 			end
 			
 			if v.object.quality >= minQuality then
-				-- Warning quality is a float value
+				-- DEBUG Warning quality is a float value
 				mwse.log("Lockpick %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
 				return v.object, curquality
 			end
@@ -158,14 +158,14 @@ local function getLockpick(minQuality)
 end
 
 
--- return a probe or nil
+-- return a probe or nil if none available
 local function getProbe()
 	local inventory = tes3.player.object.inventory
 
     for _, v in pairs(inventory) do
         if v.object.objectType == 1112494672 then
 			if v.object.quality >= minQuality then
-				-- Warning quality is a float value
+				-- TODO Warning quality is a float value
 				mwse.log("Probe %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
 				return v.object
 			end
@@ -177,11 +177,15 @@ end
 
 -- returns the minimal lockpick quality for the given locklevel at current fatigue
 -- and at max fatigue
--- TODO returns 2 lock quality: first with current fatigue, second with max fatigue
+-- @param locklevel: lock level of the container
+-- @return min lockpick quality for current fatigue
+-- @return min lockpick quality for max fatigue
 local function getMinLockPickMultiplier(locklevel)
 	local lpQualCurFatigue, lpQualMaxFatigue
+
 	getPlayerStats()
 
+	-- https://en.uesp.net/wiki/Morrowind:Security
 	-- lpmultminfull = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5)
 	-- lpmulmintcurrent = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5 * fatcurrent/fatmax)
 	lpQualCurFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
@@ -191,7 +195,11 @@ local function getMinLockPickMultiplier(locklevel)
 end
 
 
--- return can be negative
+-- returns the chance to unlock a container with a lockpick
+-- @param locklevel: lock level of the container
+-- @param lpmult: quality of the lockpick
+-- @return lockpick chance for current fatigue
+-- @return lockpick chance for max fatigue
 local function	getLockpickChance(locklevel, lpmult)
 	local chancecurrent,chancefull
 
@@ -200,7 +208,7 @@ local function	getLockpickChance(locklevel, lpmult)
 	-- ((Security + (Agility/5) + (Luck/10)) * Lockpick multiplier * (0.75 + 0.5 * Current Fatigue/Maximum Fatigue) - Lock Level)
 	chancecurrent = ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * lpmult * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue)) - locklevel
 	chancefull = ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * lpmult * (0.75 + 0.5)) - locklevel
-	return chancecurrent
+	return chancecurrent, chancefull
 end
 
 
@@ -221,7 +229,9 @@ local function onKeyDown(e)
 	end
 end
 
--- 
+
+-- event OnMouseButton
+-- @param e: event info
 local function onMouseButtonDown(e)
 	if tes3.menuMode() then
 		return
@@ -262,21 +272,21 @@ local function onMouseButtonDown(e)
 					-- no lockpick so lpcurqual = max lockpick quality available
 					if lpcurqual > minQualityMaxFat then
 						-- TODO equip anyway ?
-						tes3.messageBox("You need to regain fatigue to be able to open this object.")
+						tes3.messageBox("You need to regain fatigue to be able to unlock this object.")
 					else
-						tes3.messageBox("You don't have a good enough lockpick to open this object. try a spell !")
+						tes3.messageBox("You don't have a good enough lockpick to unlock this object. try a spell !")
 					end
 				end
 			
 				if isLocked and isTrapped then
 					-- locked and trapped
-					tes3.messageBox("Trapped and Lock Level: " .. lockNode.level)
+					tes3.messageBox("DEBUG Trapped and Lock Level: " .. lockNode.level)
 					-- equip probe
 				else
 					if isLocked then
 						-- only locked
-						tes3.messageBox("Lock Level: " .. lockNode.level)
-						tes3.messageBox("Unlock chance %6.2f", getLockpickChance(lockNode.level, 1.1))
+						tes3.messageBox("DEBUG Lock Level: " .. lockNode.level)
+						tes3.messageBox("DEBUG Unlock chance %6.2f", getLockpickChance(lockNode.level, lpcurqual))
 					elseif isTrapped then
 						-- only trapped
 						tes3.messageBox("Trapped")
