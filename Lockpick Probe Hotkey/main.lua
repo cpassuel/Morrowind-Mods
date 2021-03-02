@@ -99,8 +99,6 @@ end
 -- https://mwse.readthedocs.io/en/latest/lua/type/tes3mobilePlayer.html
 -- https://mwse.readthedocs.io/en/latest/lua/type/tes3statistic.html
 
--- TODO calculer la quality minimale du lockpick pour le niveau de lock donné
-
 
 --[[
 	event handlers 
@@ -132,6 +130,9 @@ end
 -- return a lockpick with a minimium quality (current quality between 1.0 and 5.0)
 -- https://en.uesp.net/wiki/Morrowind:Security
 -- TODO return 2 result : lockpick or nil, current quality or maxquality https://www.lua.org/pil/5.1.html
+-- @param minQuality: minimal quality pf the lock pick
+-- @return lockpick with the minimal quality or nil
+-- @return quality of the lockpick or quality of the best lockpick in inventory if no available lockpick
 local function getLockpick(minQuality)
 	local inventory = tes3.player.object.inventory
 	local curquality
