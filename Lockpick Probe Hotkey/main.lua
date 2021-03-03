@@ -2,13 +2,13 @@
 	Lockpick and Probe Hotkey
 	@author		cpassuel
 	@version	
-	@changelog	1.0 Initial version
+	@changelog	0.5 Initial version
 ]]--
 
 
 -- Informations about the mod
 local modName = "Lockpick and Probe Hotkey"
-local modVersion = "V1.0"
+local modVersion = "V0.5"
 local modConfig = "LockPickProbeHotkey"
 local modAuthor= "cpassuel"
 
@@ -159,17 +159,16 @@ local function getLockpick(minQuality)
 end
 
 
--- return a probe or nil if none available
+-- Search for a probe in inventory
+-- @return a probe or nil if none available
 local function getProbe()
 	local inventory = tes3.player.object.inventory
 
     for _, v in pairs(inventory) do
         if v.object.objectType == 1112494672 then
-			if v.object.quality >= minQuality then
-				-- TODO Warning quality is a float value
-				mwse.log("Probe %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
-				return v.object
-			end
+			-- TODO Warning quality is a float value
+			mwse.log("Probe %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
+			return v.object
         end
     end
 	return nil
@@ -213,7 +212,8 @@ local function	getLockpickChance(locklevel, lpmult)
 end
 
 
---
+-- Equip the items in parameter
+-- @param item to equip or nil
 local function equipLockPick(lp)
 	if lp ~= nil then
 		mwscript.equip{ reference = tes3.player, item = lp}
@@ -255,6 +255,8 @@ local function onMouseButtonDown(e)
 				local isLocked = (lockNode.locked)
 				local isTrapped = (lockNode.trap ~= nil)
 				local isKeyLock = (lockNode.key ~= nil)
+				
+				-- TODO change the code for handling both options
 			
 				-- get the minimal quality of the lockpick
 				local minQuality, minQualityMaxFat
@@ -282,7 +284,14 @@ local function onMouseButtonDown(e)
 				if isLocked and isTrapped then
 					-- locked and trapped
 					tes3.messageBox("DEBUG Trapped and Lock Level: " .. lockNode.level)
-					-- equip probe
+
+					local probe = getProbe()
+					if probe ~= nil then
+						-- equip probe
+						equipLockPick(probe)
+					else
+						tes3.messageBox("You need to find probe to disarm this object")
+					end
 				else
 					if isLocked then
 						-- only locked
