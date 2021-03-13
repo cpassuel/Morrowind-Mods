@@ -23,7 +23,12 @@ local modAuthor= "cpassuel"
 	mininalUnlockChance (add a fail back option ?)
 	
 	Lockpick : equiper le lockpick minimal qui permet de dévérouiller
+	
+	Probe
+	Find a probe with a minimal chance to disarm item (option), with fallback to the better probe below
+	this minimal quality
 ]]
+
 
 --[[
 	Infos
@@ -106,12 +111,13 @@ end
 
 -- Called when the player looks at a new object that would show a tooltip, or transfers off of such an object.
 -- keep track of object looked at by the player
+-- @param e: event info
 local function onActivationTargetChanged(e)
 	activatedTarget = e.current
 end
 
 
---
+-- update the playerAttribute table
 local function getPlayerStats()
 	-- skill et attributes
 	local player = tes3.mobilePlayer
@@ -125,11 +131,8 @@ local function getPlayerStats()
 end
 
 
--- 1262702412 	LOCK 	Lockpick
--- 1112494672 	PROB 	Probe
--- return a lockpick with a minimium quality (current quality between 1.0 and 5.0)
+-- returns a lockpick with a minimium quality (current quality between 1.0 and 5.0)
 -- https://en.uesp.net/wiki/Morrowind:Security
--- TODO return 2 result : lockpick or nil, current quality or maxquality https://www.lua.org/pil/5.1.html
 -- @param minQuality: minimal quality pf the lock pick
 -- @return lockpick with the minimal quality or nil
 -- @return quality of the lockpick or quality of the best lockpick in inventory if no available lockpick
@@ -137,20 +140,17 @@ local function getLockpick(minQuality)
 	local inventory = tes3.player.object.inventory
 	local curquality
 	
-	curquality = 0.0
+	curquality = 0.0	-- Warning quality is a float value
 	
     for _, v in pairs(inventory) do
-        if v.object.objectType == 1262702412 then
-			--mwse.log("object = %s - %s - %d", v.object.name, v.object.objectType, v.count)
-			
-			-- calc max quality if no lockpick with minimal quality or current quality lockpick
+        if v.object.objectType == 1262702412 then	-- 1262702412 	LOCK 	Lockpick
+			-- calc max available quality if no lockpick with minimal quality or current quality lockpick
 			if v.object.quality > curquality then
 				curquality = v.object.quality
 			end
 			
 			if v.object.quality >= minQuality then
-				-- DEBUG Warning quality is a float value
-				mwse.log("Lockpick %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
+				mwse.log("DEBUG Lockpick %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
 				return v.object, curquality
 			end
         end
@@ -159,15 +159,16 @@ local function getLockpick(minQuality)
 end
 
 
--- Search for a probe in inventory
+-- Search for the first probe in inventory
 -- @return a probe or nil if none available
+-- min quality 0.25 for bent probe
 local function getProbe()
 	local inventory = tes3.player.object.inventory
 
     for _, v in pairs(inventory) do
-        if v.object.objectType == 1112494672 then
+        if v.object.objectType == 1112494672 then	-- 1112494672 	PROB 	Probe
 			-- TODO Warning quality is a float value
-			mwse.log("Probe %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
+			mwse.log("DEBUG Probe %s quality %f Condition %d", v.object.name, v.object.quality , v.object.condition)
 			return v.object
         end
     end
@@ -254,7 +255,8 @@ local function onMouseButtonDown(e)
 			if lockNode ~= nil then
 				local isLocked = (lockNode.locked)
 				local isTrapped = (lockNode.trap ~= nil)
-				local isKeyLock = (lockNode.key ~= nil)
+				-- https://mwse.readthedocs.io/en/latest/lua/type/tes3lockNode.html
+				local isKeyLock = (lockNode.key ~= nil) -- if a key exists to unlock this item
 				
 				-- TODO change the code for handling both options
 			
@@ -342,8 +344,8 @@ local function registerModConfig()
 	
 	local page = template:createPage()
 	
-	local catMain = page:createCategory(modName)
-	catMain:createYesNoButton {
+	local catLockNProbe = page:createCategory(modName)
+	catLockNProbe:createYesNoButton {
 		label = "Enable " .. modName,
 		description = "Allows you to Enable or Disable the mod",
 		variable = createtableVar("modEnabled"),
