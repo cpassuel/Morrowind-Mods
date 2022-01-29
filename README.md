@@ -1,6 +1,6 @@
 # Morrowind-Mods
 
-Repository for my Morrowind mods, some are only for testing
+Repository for my Morrowind mods, some are for testing only
 
 
 ## Morrowind Mouse Control
