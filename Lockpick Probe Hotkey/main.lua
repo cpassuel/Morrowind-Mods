@@ -8,7 +8,7 @@
 
 -- Informations about the mod
 local modName = "Lockpick and Probe Hotkey"
-local modVersion = "V0.5"
+local modVersion = "V0.5.5"
 local modConfig = "LockPickProbeHotkey"
 local modAuthor= "cpassuel"
 
@@ -68,6 +68,7 @@ local modDefaultConfig = {
 	modEnabled = true,
 	--
 	hiddenTraps = false,	-- MCP option to hide traps
+	hintKeyLock = false,	-- spoil if key exists for object
 	-- hotkey mapping 
 	probeHotkey = 0,
 	lockpickHotkey = 0,
@@ -248,8 +249,17 @@ local function onMouseButtonDown(e)
 	end
 	
 	if activatedTarget ~= nil then
+		local objectType = ""
 		-- check for door or container
-		if (activatedTarget.object.objectType == tes3.objectType.container) or (activatedTarget.object.objectType == tes3.objectType.door) then
+		if (activatedTarget.object.objectType == tes3.objectType.container) then
+			objectType = "container"
+		end
+
+		if (activatedTarget.object.objectType == tes3.objectType.door) then
+			objectType = "door"
+		end
+		
+		if (objectType == "container") or (objectType == "door") then
 			-- door or container
 			local lockNode = activatedTarget.lockNode	-- peut être nil si pas locked, à verifier pour trapped
 			if lockNode ~= nil then
@@ -277,9 +287,13 @@ local function onMouseButtonDown(e)
 					-- no lockpick so lpcurqual = max lockpick quality available
 					if lpcurqual > minQualityMaxFat then
 						-- TODO equip anyway ?
-						tes3.messageBox("You need to regain fatigue to be able to unlock this object.")
+						tes3.messageBox("You need to regain fatigue to be able to unlock this " .. objectType .. ".")
 					else
-						tes3.messageBox("You don't have a good enough lockpick to unlock this object. try a spell !")
+						if config.hintKeyLock then
+							tes3.messageBox("You need a better lockpick to unlock this " .. objectType .. ". find the key or try a spell !")
+						else
+							tes3.messageBox("You need a better lockpick to unlock this " .. objectType .. ". try a spell !")
+						end
 					end
 				end
 			
@@ -292,7 +306,7 @@ local function onMouseButtonDown(e)
 						-- equip probe
 						equipLockPick(probe)
 					else
-						tes3.messageBox("You need to find probe to disarm this object")
+						tes3.messageBox("You need to find probe to disarm this " .. objectType)
 					end
 				else
 					if isLocked then
@@ -347,9 +361,24 @@ local function registerModConfig()
 	local catLockNProbe = page:createCategory(modName)
 	catLockNProbe:createYesNoButton {
 		label = "Enable " .. modName,
-		description = "Allows you to Enable or Disable the mod",
+		description = "Allows you to Enable or Disable this mod",
 		variable = createtableVar("modEnabled"),
 		defaultSetting = true,
+	}
+	
+	local catOptions = page:createCategory(modName)
+	catOptions:createYesNoButton {
+		label = "Spoil if object has key",
+		description = "If the player cannot open the object, tells him if a key exists for it",
+		variable = createtableVar("hintKeyLock"),		 
+		defaultSetting = false,
+	}
+
+	catOptions:createYesNoButton {
+		label = "Equip probe if trapped",
+		description = "Equip a probe if an object is trapped. To use in relation with hidden traps MCP option",
+		variable = createtableVar("hiddenTraps"),		 
+		defaultSetting = false,
 	}
 	
 	mwse.mcm.register(template)
