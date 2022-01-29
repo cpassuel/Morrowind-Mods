@@ -13,3 +13,7 @@ middle button. In Weapon Ready mode you will cycle weapons with the mouse wheel 
 in Spell Ready mode you will cycle spells/powers.
 
 This is a MWSE-Lua mod, and requires a valid installation of MWSE 2.1 or later.
+
+## Lockpick Probe Hotkey
+
+Test for auto-equip lockpit / probe
