@@ -18,7 +18,7 @@ local modAuthor= "cpassuel"
 	
 	In case of no usable lockpick check formula with full fatigue restaured and write message if ok
 	
-	Gestion de Hidden trap
+	Hidden traps option in MCP => add a MCM option
 	
 	mininalUnlockChance (add a fail back option ?)
 	
@@ -27,6 +27,8 @@ local modAuthor= "cpassuel"
 	Probe
 	Find a probe with a minimal chance to disarm item (option), with fallback to the better probe below
 	this minimal quality
+	
+	If several probe/lockpick of the same quality, equip the most used => full scan of inventory
 ]]
 
 
@@ -223,12 +225,13 @@ local function equipLockPick(lp)
 end
 
 
---
+-- Check key down to lockpick or probe
+-- @param e:event info
 local function onKeyDown(e)
 	if e.keyCode == config.probeHotkey then
-	
+		-- TODO equip a probe (check object ?)
 	elseif e.keyCode == config.lockpickHotkey then
-	
+		-- TODO equip a lockpick (check object ?)
 	end
 end
 
@@ -252,6 +255,7 @@ local function onMouseButtonDown(e)
 		local objectType = ""
 		-- check for door or container
 		if (activatedTarget.object.objectType == tes3.objectType.container) then
+			-- TODO find the type of container ? (chest, urn,...)
 			objectType = "container"
 		end
 
@@ -259,7 +263,7 @@ local function onMouseButtonDown(e)
 			objectType = "door"
 		end
 		
-		if (objectType == "container") or (objectType == "door") then
+		if (objectType ~= "") then
 			-- door or container
 			local lockNode = activatedTarget.lockNode	-- peut être nil si pas locked, à verifier pour trapped
 			if lockNode ~= nil then
@@ -376,7 +380,7 @@ local function registerModConfig()
 
 	catOptions:createYesNoButton {
 		label = "Equip probe if trapped",
-		description = "Equip a probe if an object is trapped. To use in relation with hidden traps MCP option",
+		description = "Equip a probe if the object is trapped. To use in relation with hidden traps option in MCP",
 		variable = createtableVar("hiddenTraps"),		 
 		defaultSetting = false,
 	}
