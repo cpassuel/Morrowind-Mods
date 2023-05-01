@@ -1,0 +1,12 @@
+# Holds basic information about the mod
+[package]
+name = "Sample Mod"
+description = "This a sample"
+homepage = "https://www.nexusmods.com/morrowind/mods/49658"
+repository = "https://github.com/jhaakma/skoomaesthesia"
+authors = ["cpassuel"]
+version = "0.0"
+
+# MWSE specific information about this mod
+[tools.mwse]
+lua-mod = "Sample Mod"
