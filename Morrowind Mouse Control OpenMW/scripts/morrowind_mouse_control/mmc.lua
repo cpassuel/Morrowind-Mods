@@ -1,6 +1,8 @@
 --[[
     Morrowind Mouse Control - Open MW version
 
+    https://openmw.readthedocs.io/en/latest/reference/lua-scripting/index.html
+
     History
 
 ]]
