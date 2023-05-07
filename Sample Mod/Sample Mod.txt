@@ -1,0 +1,103 @@
+=====================================================================================
+                                      Sample Mod                                      
+                                   Author: cpassuel
+                                     Version 0.10
+=====================================================================================
+
+ INDEX:
+
+ -> Requirements
+ -> About this Mod
+ -> Installation
+ -> Playing this Plugin
+ -> Known Bugs & Issues
+ -> Version History
+ -> Incompatibilities & Save Game Warnings
+ -> Credits & Usage
+
+ =====================================================================================
+ REQUIREMENTS:
+=====================================================================================
+
+ This is a MWSE-Lua mod, and requires a valid installation of MWSE 2.1 or later.
+
+    * Morrowind, Tribunal, and Bloodmoon.
+    * MGE-XE 0.10.0
+    * MWSE 2.1
+
+=====================================================================================
+ ABOUT THIS MOD:
+=====================================================================================
+
+The goal of this mod is to give a starting template with some examples to create
+a MWSE Lua mod with a Mod Config Menu for Morrowind. It show how to create a
+Mod Config Menu (MCM) and to use translations. It tries to use the best practices.
+
+The mod itself doesn't do much, it captures CombatStarted and MouseButtonDown to
+show how to manage events. You can also check my mod Morrowind Mouse Control at
+https://www.nexusmods.com/morrowind/mods/48254 as an example of a real mod.
+
+The mod is probably not compatible with OpenMW.
+
+Now it's your turn to create mods
+
+=====================================================================================
+ INSTALLATION:
+=====================================================================================
+
+ Extract the archive into your Data Files\ directory
+
+ To uninstall, delete the folder Data Files\MWSE\mods\Sample Mod\ and
+ Data Files\Sample Mod-metadata.toml. you can also delete the config file
+ Data Files\MWSE\config\Sample Mod.json
+
+ =====================================================================================
+ PLAYING THIS PLUGIN:
+=====================================================================================
+
+ There is no esp file to activate. Simply install the MWSE 2.1 and this mod, and
+ load up an old or new game.
+
+=====================================================================================
+ KNOWN ISSUES OR BUGS:
+=====================================================================================
+ 
+ Please report any issues on the Nexus page https://www.nexusmods.com/morrowind/mods/52786
+
+=====================================================================================
+ VERSION HISTORY
+=====================================================================================
+
+ 0.10   [2023-08-05]: Initial release
+
+ =====================================================================================
+ INCOMPATIBILITIES & SAVED GAME WARNINGS:
+=====================================================================================
+
+ This mod does not alter the save game contents in any way, and is clean to run with
+ any other known mod. It may only conflict with mods using combatStarted, 4th & 5th
+ button in game. If a conflict is found, please report it on the Nexus page
+
+ https://www.nexusmods.com/morrowind/mods/52786
+
+ =====================================================================================
+ CREDITS & USAGE:
+=====================================================================================
+
+ Special thanks to NullCascade and team: for MWSE lua scripting development and docs
+ Thanks to DarkElfGuy for inspiring people to create and release mods for the yearly
+ modathon and everyone who has contributed and continues to contribute to Morrowind
+ Modding
+
+ This plugin is freely distributable and modifiable, as long as this readme
+ file accompanies it and credit is given to the original author. By downloading
+ and running this plugin, you acknowledge the following :
+
+ - You have read and understood this readme file.
+ - You acknowledge that the author of this plugin accepts no responsibility for 
+   damage to your game saves, operating system, computer, etc, 
+   when using this plugin.
+
+ Copyright 2023 cpassuel
+
+ NOTE: Please do not upload this plugin for distribution without my permission.
