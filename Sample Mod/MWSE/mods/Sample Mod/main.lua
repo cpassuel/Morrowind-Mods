@@ -16,13 +16,13 @@
 	Mod folders structure
 
 	|-- Data Files
-	|	|-- Sample Mod.txt
-	|	|-- Sample Mod-metadata.toml
+	|	|-- <modName>.txt
+	|	|-- <modName>-metadata.toml
 	|	|-- MWSE
 	|	|	|-- config
-	|	|	|	|-- SampleMod.json
+	|	|	|	|-- <modName>.json
 	|	|	|-- mods
-	|	|	|	|-- Sample Mod
+	|	|	|	|-- <modName>
 	|	|	|	|	|-- main.lua
 	|	|	|	|-- i18n
 	|	|	|	|	|-- deu.lua
@@ -30,18 +30,21 @@
 	|	|	|	|	|-- fra.lua
 
 	Folder i18n is only needed if you use mod translation
-	Sample Mod.txt is an optional readme text file
+	<modName>.txt is an optional readme text file, its location is not explictely defined
 
 	You can find more lua mod examples at https://github.com/Hrnchamd/MWSE-Lua-mods
+	You can also check my mod Morrowind Mouse Control at https://www.nexusmods.com/morrowind/mods/48254
 
+	DEBUG
+	You can add logDebug to log infos in MWSE.log by setting debugMode to true in the config <modName>.json. Otherwise it should be set to false.
 	In case of issues with you mod, check MWSE.log flie in Morrowind folder, you will see
 ]]--
 
 
--- Informations about the mod
+-- Adapts settings to your mod
 local modName = "Sample Mod"	-- MUST be same as the mod folder 
 local modVersion = "V0.10"
-local modConfig = "Sample Mod"	-- file name for MCM config file
+local modConfig = modName	-- file name for MCM config file
 local modAuthor= "me"
 
 
@@ -54,7 +57,7 @@ local modAuthor= "me"
 
 ]]--
 
--- returns a table of transation
+-- returns a table of transation, you acces a translation by its key: i18n("HELP_ATTACKED")
 local i18n = mwse.loadTranslations(modName)
 
 
@@ -76,9 +79,9 @@ local modDefaultConfig = {
 	modEnabled = true,
 	--
 	timeScale = 25,
-	mwCtrlAction = 0,
-	myText = "Sample Mod",
-	debugMode = true	-- true just for demo purpose, it could be as a MCM option, currently you have to change it in the config file
+	mwCtrlAction = modifierKeyOptions[1]["value"],	-- BEWARE table index start at 1 so I selected the first value (NONE)
+	myText = "my sample text",
+	debugMode = true	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
 }
 
 
@@ -107,8 +110,6 @@ end
 local function logInfo(msg)
 	-- https://www.lua.org/pil/5.2.html
 	-- TODO get ride of string.format in calling 
-	--mwse.log(string.format(fmt, unpack(arg)))
-
 	--s = string.format('[' .. modName .. '] ' .. 'INFO ' .. fmt, unpack(arg))
 	--mwse.log(s)
 	mwse.log('[' .. modName .. '] ' .. 'INFO ' .. msg)
@@ -184,8 +185,9 @@ local function initialize()
 	-- registers needed events, better to use tes.event reference instead of the name https://mwse.github.io/MWSE/references/events/
 	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
 	event.register(tes3.event.combatStarted, onCombatStarted)
+	logInfo(modName .. " " .. modVersion .. " initialized")
 end
-event.register("initialized", initialize)
+event.register(tes3.event.initialized, initialize)
 
 
 --[[
@@ -208,6 +210,7 @@ end
 
 --- Create the MCM menu
 -- Basic UI, more fancier can be created like hiding parts of UI based on settings
+-- UI should be transalated also
 local function registerModConfig()
     local template = mwse.mcm.createTemplate(modName)
 	template:saveOnClose(modConfig, config)
@@ -239,6 +242,7 @@ local function registerModConfig()
 		variable = createtableVar("timeScale")
 	}
 
+	-- didn't find ref for this setting
 	catSettings:createDropdown {
 		label = "Action for CTRL + MouseWheel",
 		description = "Select the wanted action when using mouse wheel while holding CTRL key down",
@@ -271,4 +275,4 @@ local function registerModConfig()
 	mwse.mcm.register(template)
 end
 
-event.register("modConfigReady", registerModConfig)
+event.register(tes3.event.modConfigReady, registerModConfig)
