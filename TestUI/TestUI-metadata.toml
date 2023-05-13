@@ -1,0 +1,22 @@
+# Holds metadata about the mod
+# https://mwse.github.io/MWSE/guides/metadata/
+
+[package]
+name = "TestUI"
+description = "This a sample mod to test UI"
+#homepage = "https://www.nexusmods.com/morrowind/mods/52786"
+#repository = "https://github.com/cpassuel/Morrowind-Mods"
+authors = ["Thinuviel"]
+version = "0.10"
+
+# MWSE specific information about this mod
+[tools.mwse]
+lua-mod = "TestUI"
+
+# adapt to your minimal version of MWSE needed
+[dependencies.mwse]
+buildnumber = 2907
+
+# in case your mod needs a minimal version of mge-xe
+[dependencies.mge-xe]
+version = ">=0.10.0"
