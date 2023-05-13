@@ -37,6 +37,14 @@ local modAuthor= "cpassuel"
 	local fFatigueMult = tes3.findGMST(1007).value
 	-- -- fatigueTerm is 1.25 at full fatigue and 0.75 at 0 fatigue
 	local fatigueTerm = fFatigueBase - fFatigueMult * (1 - tes3.mobilePlayer.fatigue.normalized)
+
+	-- Probing a trap http://web.archive.org/web/20190225092002/https://forums.bethsoft.com/topic/1097214-gameplay-mechanics-analysis/
+	x = 0.2 * pcAgility + 0.1 * pcLuck + securitySkill
+	x += fTrapCostMult * trapSpellPoints
+	x *= probeQuality * fatigueTerm
+
+	if x <= 0: fail and report impossible
+	roll 100, if roll <= x then untrap else report failure
 ]]
 
 
@@ -71,10 +79,10 @@ local modDefaultConfig = {
 	-- hotkey mapping 
 	probeHotkey = 0,
 	lockpickHotkey = 0,
-	mininalUnlockChance = 0,	-- equip a lockpick with a minimal unlock chance
+	mininalUnlockChance = 25,	-- equip a lockpick with a minimal unlock chance
 	probeQuality = 0,	-- which probe use, meduim quality fisrt ?
 	--
-	debugMode = false
+	debugMode = true	-- until release
 }
 
 
@@ -109,13 +117,7 @@ end
 	Helper functions
 ]]
 
--- chance to successfully unlock
--- ((Security + (Agility/5) + (Luck/10)) * Lockpick multiplier * (0.75 + 0.5 * Current Fatigue/Maximum Fatigue) - Lock Level)%
--- 2 partie ind�pendantes Security + (Agility/5) + (Luck/10)) et (0.75 + 0.5 * Current Fatigue/Maximum Fatigue)
 
--- formule qui renvoie 2 r�sultats % avec current fatigue et % avec full fatigue
--- input Lockpick multiplier (from inventory) et Lock Level
--- https://riptutorial.com/lua/example/4082/multiple-results
 
 -- recuperer les infos du joueur
 -- https://mwse.readthedocs.io/en/latest/lua/type/tes3mobilePlayer.html
@@ -170,18 +172,17 @@ local function getLockpick(minQuality)
         end
     end
 
-	-- TODO check the logDebug if curLockPick = nil
-	logDebug(string.format("Returning lockpick %p", curLockPick))
 	return curLockPick
 end
 
 
---- Search for a probe of the minimal quality
+--- Search for a probe of the minimal quality in the inventory
 -- @param minQuality
 -- @return the probe or nil if not found
 local function getProbe(minQuality)
 	local inventory = tes3.player.object.inventory
 
+	-- TODO skip inventoty parsing if minQuality > max lockpick quality in game (5.0)
     for _, v in pairs(inventory) do
         if v.object.objectType == tes3.objectType.probe then
 			if v.object.quality >= minQuality then
@@ -198,9 +199,20 @@ end
 --- Compute the minimal lockpick quality for the given locklevel
 -- @param locklevel level of the lock to unlock
 -- @returns minimal lockpick quality for the given locklevel
+-- chance to successfully unlock
+-- ((Security + (Agility/5) + (Luck/10)) * Lockpick multiplier * (0.75 + 0.5 * Current Fatigue/Maximum Fatigue) - Lock Level)%
+-- 2 partie ind�pendantes Security + (Agility/5) + (Luck/10)) et (0.75 + 0.5 * Current Fatigue/Maximum Fatigue)
+-- formule qui renvoie 2 r�sultats % avec current fatigue et % avec full fatigue
+-- input Lockpick multiplier (from inventory) et Lock Level
+-- https://riptutorial.com/lua/example/4082/multiple-results
 local function getMinLockPickMultiplier(locklevel)
 	getPlayerStats()
 
+	-- Lockpick multiplier >= (minProba + Lock Level) / (Security + (Agility/5) + (Luck/10)) / (0.75 + 0.5 * Current Fatigue/Maximum Fatigue)
+	lpMultMin = ((config.mininalUnlockChance / 100) + locklevel) / (playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) / (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue)
+	logDebug(string.format("Minimal LP quality for %d % chance is %6.2f", config.mininalUnlockChance, lpMultMin))
+
+	-- TODO compute the lpmult for a min probability to unlock
 	-- lpmultminfull = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5)
 	-- lpmulmintcurrent = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5 * fatcurrent/fatmax)
 	return locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
@@ -239,6 +251,7 @@ end
 
 --- Called when the player looks at a new object that would show a tooltip, or transfers off of such an object.
 -- keep track of object looked at by the player
+-- https://mwse.github.io/MWSE/events/activationTargetChanged/
 local function onActivationTargetChanged(e)
 	activatedTarget = e.current
 end
@@ -276,11 +289,14 @@ local function onMouseButtonDown(e)
 	if activatedTarget ~= nil then
 		if (activatedTarget.object.objectType == tes3.objectType.container) or (activatedTarget.object.objectType == tes3.objectType.door) then
 			-- door or container
-			local lockNode = activatedTarget.lockNode	-- peut �tre nil si pas locked, � verifier pour trapped
+			local lockNode = activatedTarget.lockNode	-- can be nil if not locked, check for trapped
 			if lockNode ~= nil then
 				local isLocked = (lockNode.locked)
 				local isTrapped = (lockNode.trap ~= nil)
 				local isKeyLock = (lockNode.key ~= nil)
+
+				-- TODO retrieve trap "quality"
+				-- https://mwse.github.io/MWSE/types/tes3spell/#sourcemod
 
 				-- TODO change workflow: check trapped first
 				-- how to manage hidden trap option ?
@@ -288,6 +304,7 @@ local function onMouseButtonDown(e)
 				-- TODO check if a lockpick of minimal quality is already equiped
 				-- get the minimal quality of the lockpick
 				minQuality =  getMinLockPickMultiplier(lockNode.level)
+				logDebug(string.format("Returned quality lockpick %6.2f", minQuality))
 
 				lockpick = getLockpick(minQuality)
 				-- 
@@ -391,6 +408,16 @@ local function registerModConfig()
 		description = "Tells the user that a key exists for this object if he doesn't a lockpick good enough",
 		variable = createtableVar("hintKeyExists"),
 		defaultSetting = false,
+	}
+
+	catSettings:createSlider {
+		label = "Mininmal change to unlock",
+		description = "Select a lockpick with a minimal chance to unlock",
+		min = 0,
+		max = 100,
+		step = 5,
+		jump = 5,
+		variable = createtableVar("mininalUnlockChance"),
 	}
 
 	mwse.mcm.register(template)
