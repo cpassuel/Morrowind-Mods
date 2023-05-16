@@ -12,7 +12,8 @@
 
 	MWSE Lua ref https://mwse.github.io/MWSE/
 	Lua https://www.lua.org/docs.html
-
+	    https://www.lua.org/cgi-bin/demo
+		
 	Mod folders structure
 
 	|-- Data Files
@@ -37,7 +38,9 @@
 
 	DEBUG
 	You can add logDebug to log infos in MWSE.log by setting debugMode to true in the config <modName>.json. Otherwise it should be set to false.
-	In case of issues with you mod, check MWSE.log flie in Morrowind folder, you will see
+	In case of issues with you mod, check MWSE.log flie in Morrowind folder, you will see^
+
+	Parts of the code with inspired from SecurityEnhanced
 ]]--
 
 
@@ -53,6 +56,15 @@ local GUIID_MenuContents = nil
 local GUIID_TestUI_ContentBlock = nil
 local GUIID_TestUI_NameLabel = nil
 
+
+-- keep information about the target (container/door trapped or locked or both)
+local currentTarget = {
+	target = nil,
+	isTrapped = false,
+	isLocked = false,
+}
+
+
 --[[
 
 	Mod translation
@@ -63,6 +75,7 @@ local GUIID_TestUI_NameLabel = nil
 ]]--
 
 -- returns a table of transation, you acces a translation by its key: i18n("HELP_ATTACKED")
+-- FIXME: RROR: Failed to run mod initialization script 'testui.mwse.mods.testui.main': Data Files\MWSE\core\initialize.lua:229: Could not load any valid i18n files.
 local i18n = mwse.loadTranslations(modName)
 
 
@@ -86,7 +99,9 @@ local modDefaultConfig = {
 	timeScale = 25,
 	mwCtrlAction = modifierKeyOptions[1]["value"],	-- BEWARE table index start at 1 so I selected the first value (NONE)
 	myText = "my sample text",
-	debugMode = true	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
+	debugMode = true,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
+	--
+	useWorstCondition = true,	-- maybe put a . state value worst, don't care, best
 }
 
 
@@ -110,6 +125,14 @@ end
 ]]--
 
 
+--- Reset the current target to no target
+local function resetCurrentTarget()
+	currentTarget.target = nil
+	currentTarget.isTrapped = false
+	currentTarget.isLocked = false
+end
+
+
 --- Log a string as Info level
 -- @param msg string to be logged as Info in MWSE.log
 local function logInfo(msg)
@@ -130,16 +153,115 @@ local function logDebug(msg)
 end
 
 
+--- Search for probe in inventory
+-- @return a table
+local function searchProbes()
+	local probesTable = {}
+
+	local inventory = tes3.player.object.inventory
+	-- TODO refactor pour chercher les lockpick
+	for _, v in pairs(inventory) do
+		if v.object.objectType == tes3.objectType.probe then
+			-- TODO how to get condition of the item ? https://mwse.github.io/MWSE/types/tes3itemData/
+			-- https://mwse.github.io/MWSE/types/tes3itemData/
+			local probe = v.object
+			local probeName = probe.name
+			local condition	= 0
+
+			-- Seems to have variables once equipped
+			-- https://mwse.github.io/MWSE/types/tes3itemStack/#object
+			if (v.variables) then
+				-- No need to iterate over all items in stack as they all have the same condition
+				condition = v.variables[1].condition
+			end
+			-- TEST il peut avoir plusieurs items => c'est pourquoi il faut parcourir la liste
+			-- mais dans une stack, tous les items ont la même condition => donc le 1er devrait suffir
+			if (v.variables) then
+				for _, data in pairs(v.variables) do
+					logDebug(string.format("data probe condition %d" , data.condition))
+				end
+			end
+
+			-- TODO Refactor code to update once
+			if (probesTable[probeName] == nil) then
+				probesTable[probeName]={}
+				-- update
+				probesTable[probeName].condition = condition
+				probesTable[probeName].probe = probe
+				logDebug(string.format("Adding probe %s - %p - condition %d",probeName, probe, condition))
+			else
+				-- check condition of the stored probe
+				if config.useWorstCondition then
+					if condition < probesTable[probe.name].condition then
+						-- update
+						logDebug(string.format("Updating lower probe %s - %p - condition %d",probeName, probe, condition))
+						probesTable[probeName].condition = condition
+						probesTable[probeName].probe = probe
+					end
+				else
+					if condition > probesTable[probeName].condition then
+						-- update
+						logDebug(string.format("Updating better probe %s - %p - condition %d",probe.name, probe, condition))
+						probesTable[probe.name].condition = condition
+						probesTable[probe.name].probe = probe
+					end
+				end
+			end
+		end
+	end
+
+	return probesTable
+end
+
+
 --[[
 
 	UI functions
 
+	+--------------------------+
+	|+------------------------+|
+	||        Label           ||
+	|+------------------------+|
+	|+------------------------+|
+	||     Tools block        ||
+	||+----------------------+||
+	|||     item block       |||
+	||+----------------------+||
+	||+----------------------+||
+	|||     item block       |||
+	||+----------------------+||
+	|+------------------------+|
+	+--------------------------+
+
+TODO hide instead of destroying ?
+Populate probe: besoin uniquement de la position de la target (position fixé dans le createWindow) ?
+Populate lockpick: besoon du lock et des stats player pour filter les lock utiles (mettre une option pour afficher tout ?)
+s'il y a une clé pour le lock et que le joueur l'a, ne pas afficher la fenetre ?
+check if a tool is already equipped before displaying the window
+
+Options
+hideChance	don't display the chance to unlock with the lockpick
+selectWorstCondition select tools with the worst condition in order to minimize used tools in the inventory
+
+Object loocked/trapped actived
+	afficher le menu de selection outil
+	gerer la selection
+	fermer le menu
+	equiper l'outil
+
+Ne plus afficher le menu à moins que l'outil soit cassé
+Ou disarm réussi mais loocked => afficher menu
+
+Comment detecter que le trap est disarmed https://mwse.github.io/MWSE/events/trapDisarm/
 ]]
 
--- TODO hide instead of destroying
 
 -- @param isProbe true if we need to select a probe, false for a lockpick
 local function createWindow(isProbe)
+	if tes3.menuMode() then
+		return
+	end	
+
 	if (tes3ui.findMenu(GUIID_MenuContents)) then
         return
     end
@@ -177,6 +299,7 @@ local function createWindow(isProbe)
 	else
 		objectTypeToSearch = tes3.objectType.lockpick
 	end
+	-- https://mwse.github.io/MWSE/types/tes3lockNode/
 
 	local objectTypeToSearh
 	local inventory = tes3.player.object.inventory
@@ -202,8 +325,10 @@ local function createWindow(isProbe)
 			local icon = block:createImage({id = GUIID_QuickLoot_ContentBlock_ItemIcon, path = "icons\\" .. v.object.icon})
 			icon.borderRight = 5
 
+			-- https://mwse.github.io/MWSE/types/tes3lockpick/
+			-- 
 			-- Label text
-			local labelText = v.object.name
+			local labelText = v.object.name .. " " .. " (12 %)"
 		
 			--local label = block:createLabel({id = GUIID_QuickLoot_ContentBlock_ItemLabel, text = labelText})
 			local label = block:createLabel({text = labelText})
@@ -233,6 +358,46 @@ end
 
 ]]
 
+---
+-- https://mwse.github.io/MWSE/events/activate/
+-- @param e event object
+local function onActivate(e)
+	--logDebug(string.format("Activated"))
+	logDebug(string.format("Activated %s", e.target.object.name))
+end
+
+
+--- event when you try do disarm something
+-- https://mwse.github.io/MWSE/events/trapDisarm/
+-- @param e event object
+local function onTrapDisarm(e)
+	-- TODO use e.lockData.trap
+	-- TODO comment voir si désarmé ????
+	-- Ne fonctionne pas car c'est avant l'action de disarm => vérifier l'état du locknode dans activationchanged
+	logDebug(string.format("Event trapDisarm %s", tostring(e.lockData.trap.deleted)))
+end
+
+
+--- You NEED to destroy your menu when entering menu mode to avoid locking the UI
+-- https://mwse.github.io/MWSE/events/menuEnter/
+-- @param e event object
+local function onMenuEnter(e)
+	logDebug(string.format("MenuEnter"))
+	destroyWindow()
+end
+
+
+--- Manage unequipped event
+-- https://mwse.github.io/MWSE/events/unequipped/
+-- @parma
+local function onUnequipped(e)
+	tes3.messageBox("Unequipped")
+	logDebug(string.format("Unequipped %s", e.item.name))
+	-- event unequipped when the probe/locpick is completly used (condition = 0)
+	-- [TestUI] DEBUG Unequipped Apprentice's Probe
+end
+
+
 --- Callback function for MouseButtonDown event
 -- https://mwse.github.io/MWSE/events/mouseButtonDown/
 -- @param e event
@@ -256,50 +421,97 @@ local function onMouseButtonDown(e)
 	end
 end
 
----
+
+--- Event fired when target changes or target is disarmed or unlocked
 -- https://mwse.github.io/MWSE/events/activationTargetChanged/
---
+-- @param e event object
 local function onActivationTargetChanged(e)
-	local isLockedObject = false
+	if not config.modEnabled then
+		return
+	end
 
-	-- TODO destroy UI when object changes
-	if (not e.current) then
-		isLockedObject = false
+	if e.current == nil then
 		logDebug(string.format("onActivationTargetChanged - No object"))
+		resetCurrentTarget()
+		destroyWindow()
+		return
+	end
+
+	-- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
+	local equippedProbe = tes3.getEquippedItem({
+        actor = tes3.player,
+        objectType = tes3.objectType.probe
+    })
+	-- TODO more intelligent test: depends on the status of the target locked => test on lockpick, trapped => test on probe
+	if (equippedProbe ~= nil) then
+		logDebug(string.format("Probe already equipped"))
+		return
+	end
+
+	-- 
+	if (currentTarget.target == e.current) then
+		logDebug(string.format("onActivationTargetChanged with same target %s - %p", e.current, e.current))
+		-- same target so it is a door or a container
+		-- actual vs old status
+		if e.current.lockNode == nil then
+			-- TODO remove this part
+			-- FIXME shoudln't happen
+			logDebug(string.format("onActivationTargetChanged but locknode nil with same target %s - %p", e.current, e.current))
+		else
+			if currentTarget.isTrapped and (e.current.lockNode.trap == nil) then
+				-- trap disarmed
+				logDebug(string.format("Trap disarmed on %s (%p)", currentTarget.target, currentTarget.target))
+				currentTarget.isTrapped = false
+				-- TODO update Window instead
+				destroyWindow()		-- Not necessary as the window is closed after selection
+				createWindow(false)
+			end
+		end
 	else
-		logDebug(string.format("onActivationTargetChanged - object %p", e.current))
+		-- TODO check objectType
+		if (e.current.object.objectType == tes3.objectType.container) or (e.current.object.objectType == tes3.objectType.door) then
+			local lockNode = e.current.lockNode
+			if lockNode ~= nil then
+				-- lockNode not nil => locked, trapped or both
+				currentTarget.target = e.current
 
-		local lockNode = e.current.lockNode	-- peut �tre nil si pas locked, � verifier pour trapped
-		if lockNode then
-			-- check for door or container
-			if (e.current.object.objectType == tes3.objectType.container) or (e.current.object.objectType == tes3.objectType.door) then
-				local isLocked = (lockNode.locked)
-				local isTrapped = (lockNode.trap ~= nil)
-
-				if isLocked or isTrapped then
-					isLockedObject = true	-- TODO Refactor name
-
-					if isTrapped then
-						--tes3.messageBox("Trapped")
-						createWindow(true)
-					else
-						--tes3.messageBox("Locked")
-						createWindow(false)
-					end
+				if lockNode.locked then
+					currentTarget.isLocked = true
+				end
+	
+				if (lockNode.trap ~= nil) then
+					currentTarget.isTrapped = true
 				end
 			end
 		end
 	end
 
-	if not isLockedObject then
+	if currentTarget.target == nil then
+		resetCurrentTarget()	-- may be not necessary
 		destroyWindow()
+		return
+	end
+
+	logDebug(string.format("Container/door %s (%p) - trapped %s, locked %s", currentTarget.target, currentTarget.target, currentTarget.isTrapped, currentTarget.isLocked))
+
+	-- TODO destroy UI when object changes
+	-- TODO store locknode for locklevel
+
+	searchProbes()
+					
+	if currentTarget.isTrapped then
+		tes3.messageBox("Trapped")
+		createWindow(true)
+	else
+		tes3.messageBox("Locked")
+		createWindow(false)
 	end
 end
 
 
 --- Callback function for CombatStarted event
 -- https://mwse.github.io/MWSE/events/combatStarted/
--- @param e event
+-- @param e event object
 local function onCombatStarted(e)
 	-- mod must be enabled
 	if not config.modEnabled then
@@ -328,6 +540,11 @@ local function initialize()
 	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
 	--event.register(tes3.event.combatStarted, onCombatStarted)
 	event.register(tes3.event.activationTargetChanged, onActivationTargetChanged)
+
+	event.register(tes3.event.unequipped, onUnequipped)
+	event.register(tes3.event.menuEnter, onMenuEnter)
+	--event.register(tes3.event.activate, onActivate)
+	--event.register(tes3.event.trapDisarm, onTrapDisarm)
 
 	GUIID_MenuContents = tes3ui.registerID("TestUI_MenuContents")
 	GUIID_TestUI_ContentBlock = tes3ui.registerID("TestUI:ContentBlock")
