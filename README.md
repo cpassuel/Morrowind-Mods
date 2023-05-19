@@ -36,3 +36,7 @@ This mod is available on Nexus Mods https://www.nexusmods.com/morrowind/mods/527
 ## Lockpick Probe Hotkey
 
 Test for auto-equip lockpit / probe
+
+## Lockpick Probe Hotkey
+
+Test UI and how to manage it
