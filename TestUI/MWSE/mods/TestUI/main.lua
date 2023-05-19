@@ -1,8 +1,8 @@
 --[[
 	TestUI
 	@author		
-	@version	0.00
-	@changelog	0.00 Initial version
+	@version	0.10
+	@changelog	0.10 Initial version
 
 	The goal of this mod is to give a starting template with some examples to create a MWSE Lua mod
 	with a Mod Config Menu (MCM) for Morrowind. It tries to use the best practices.
@@ -46,16 +46,27 @@
 
 -- Adapts settings to your mod
 local modName = "TestUI"	-- MUST be same as the mod folder 
-local modVersion = "V0.00"
+local modVersion = "V0.10"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "me"
 
 
 -- Keep track of all the GUI IDs we care about.
-local GUIID_MenuContents = nil
+local GUIID_Menu = nil
+--local GUIID_TestUI_NameLabel = nil
 local GUIID_TestUI_ContentBlock = nil
-local GUIID_TestUI_NameLabel = nil
+local GUIID_TestUI_ItemBlock = nil
 
+-- TODO rename
+local currentMenu = {
+	itemsCount = 0,
+	currentIndex = 0,
+	window = nil,
+	--
+	isFirstTrapped=false,	-- set to true if trapped
+	weapon = nil,
+	weaponDrawn = true,
+}
 
 -- keep information about the target (container/door trapped or locked or both)
 local currentTarget = {
@@ -84,6 +95,8 @@ local i18n = mwse.loadTranslations(modName)
 	mod config
 
 ]]
+
+--#region mod config
 
 -- list of values for the MCM dropdown menu
 local modifierKeyOptions = {
@@ -117,6 +130,7 @@ else
 	end
 end
 
+--#endregion
 
 --[[
 
@@ -153,62 +167,156 @@ local function logDebug(msg)
 end
 
 
---- Search for probe in inventory
--- @return a table
-local function searchProbes()
-	local probesTable = {}
+--- Update the currentIndex by moving to the next tool/item
+local function nextTool()
+	if currentMenu.itemsCount < 1 then
+		logDebug("ERROR Try to get the next item but there are no items")
+	end
 
+	if currentMenu.currentIndex == currentMenu.itemsCount then
+		currentMenu.currentIndex = 1
+	else
+		currentMenu.currentIndex = currentMenu.currentIndex + 1
+	end
+end
+
+
+--- Update currentIndex by moving to the previous item
+local function previousTool()
+	if currentMenu.itemsCount < 1 then
+		logDebug("ERROR Try to get the previous item but there are no items")
+	end
+
+	if currentMenu.currentIndex == 1 then
+		currentMenu.currentIndex = currentMenu.itemsCount
+	else
+		currentMenu.currentIndex = currentMenu.currentIndex - 1
+	end
+end
+
+
+-- ere
+local function onEquip(e)
+	logDebug("onEquip")
+	-- get condition
+	e.block = true
+	return false
+end
+
+
+--- Search in the inventory for lockpicks or probes with a minimal quality
+-- @param true to search probes, false to search lockpicks
+-- @param minQual minimal quality of the tool requested
+-- @returns table with one entry par tool with quality information, can be nil if no tool found
+local function searchTools(searchProbes, minQual)
 	local inventory = tes3.player.object.inventory
-	-- TODO refactor pour chercher les lockpick
-	for _, v in pairs(inventory) do
-		if v.object.objectType == tes3.objectType.probe then
-			-- TODO how to get condition of the item ? https://mwse.github.io/MWSE/types/tes3itemData/
-			-- https://mwse.github.io/MWSE/types/tes3itemData/
-			local probe = v.object
-			local probeName = probe.name
-			local condition	= 0
 
-			-- Seems to have variables once equipped
-			-- https://mwse.github.io/MWSE/types/tes3itemStack/#object
-			if (v.variables) then
-				-- No need to iterate over all items in stack as they all have the same condition
-				condition = v.variables[1].condition
-			end
-			-- TEST il peut avoir plusieurs items => c'est pourquoi il faut parcourir la liste
-			-- mais dans une stack, tous les items ont la même condition => donc le 1er devrait suffir
-			if (v.variables) then
-				for _, data in pairs(v.variables) do
-					logDebug(string.format("data probe condition %d" , data.condition))
-				end
-			end
+	local toolsTable = {}
+	local objectTypeToSearch
 
-			-- TODO Refactor code to update once
-			if (probesTable[probeName] == nil) then
-				probesTable[probeName]={}
-				-- update
-				probesTable[probeName].condition = condition
-				probesTable[probeName].probe = probe
-				logDebug(string.format("Adding probe %s - %p - condition %d",probeName, probe, condition))
-			else
-				-- check condition of the stored probe
-				if config.useWorstCondition then
-					if condition < probesTable[probe.name].condition then
-						-- update
-						logDebug(string.format("Updating lower probe %s - %p - condition %d",probeName, probe, condition))
-						probesTable[probeName].condition = condition
-						probesTable[probeName].probe = probe
-					end
-				else
-					if condition > probesTable[probeName].condition then
-						-- update
-						logDebug(string.format("Updating better probe %s - %p - condition %d",probe.name, probe, condition))
-						probesTable[probe.name].condition = condition
-						probesTable[probe.name].probe = probe
-					end
+	if searchProbes then
+		objectTypeToSearch = tes3.objectType.probe
+	else
+		objectTypeToSearch = tes3.objectType.lockpick
+	end
+
+	-- no need to search for tool condition as it will be defined when equipping
+	for _, stack in pairs(inventory) do
+		if stack.object.objectType == objectTypeToSearch then
+			local tool = stack.object	-- tes3lockpick or tes3probe
+			local toolName = tool.name
+			local toolQuality = tool.quality
+
+			logDebug(string.format("Found probe %s - %p (%.2f)",toolName, tool, toolQuality))
+
+			-- check min quality
+			if toolQuality >= minQual then
+				-- add only one type of tool
+				if (toolsTable[toolName] == nil) then
+					toolsTable[toolName]={}
+					-- update
+					toolsTable[toolName].tool = tool
+					toolsTable[toolName].quality = toolQuality
+					logDebug(string.format("Adding tool %s - %p (%.2f)",toolName, tool, toolQuality))
 				end
 			end
 		end
 	end
+
+	-- https://stackoverflow.com/a/49625819
+	-- https://stackoverflow.com/questions/2038418/associatively-sorting-a-table-by-value-in-lua
+	-- http://lua-users.org/wiki/OrderedAssociativeTable
+	-- sort tools by quality asc
+	-- FIXME pb avec le sort
+	table.sort(toolsTable, function(a,b) return a.quality > b.quality end)
+
+	-- DEBUG
+	for _,v in pairs(toolsTable) do
+		logDebug(string.format("Tool %s",v.tool))
+	end
+
+	return toolsTable
+end
+
+
+-- TODO DELETE
+-- TODO generalize for probe and lockpick (bool, minQual)
+--- Search for the probes in the inventory
+-- @return a table with one entry by item (can be empty if no probes available)
+local function searchProbes()
+	local probesTable = {}
+
+	local inventory = tes3.player.object.inventory
+
+	-- TODO refactor pour chercher les lockpick
+	for _, stack in pairs(inventory) do
+		if stack.object.objectType == tes3.objectType.probe then
+			-- TODO how to get condition of the item ? https://mwse.github.io/MWSE/types/tes3itemData/
+			-- https://mwse.github.io/MWSE/types/tes3itemData/
+			-- stack is tes3itemStack https://mwse.github.io/MWSE/types/tes3itemStack/
+			local probe = stack.object	-- tes3item
+			local probeName = probe.name
+			local probeQuallty = probe.quality	-- valid for probes
+
+			-- TODO test to equip and cancel it to get the condition https://mwse.github.io/MWSE/events/equip
+			-- possibilité de ne tracker que le type d'objet que l'on veut selectionner
+			-- TODO find a way to get tool condition when unequipped
+			-- Seems to have variables once equipped
+			-- https://mwse.github.io/MWSE/types/tes3itemStack/#object
+			-- if (stack.variables) then
+			-- 	-- No need to iterate over all items in stack as they all have the same condition
+			-- 	condition = stack.variables[1].condition
+			-- end
+			-- TEST il peut avoir plusieurs items => c'est pourquoi il faut parcourir la liste
+			-- mais dans une stack, tous les items ont la même condition => donc le 1er devrait suffir
+			-- if (stack.variables) then
+			-- 	for _, data in pairs(stack.variables) do
+			-- 		logDebug(string.format("data probe condition %d" , data.condition))
+			-- 	end
+			-- end
+			-- TODO refactor as condition is not known when unequipped
+			-- TODO Refactor code to update once
+			-- 
+
+			logDebug(string.format("Found probe %s - %p",probeName, probe))
+
+			-- add only one type of probe
+			if (probesTable[probeName] == nil) then
+				probesTable[probeName]={}
+				-- update
+				probesTable[probeName].probe = probe
+				probesTable[probeName].quality = probeQuallty
+				probesTable[probeName].count = stack.count
+				logDebug(string.format("Adding probe %s - %p (%d)",probeName, probe, stack.count))
+			end
+		end
+	end
+
+	-- TODO sort by quality
+	table.sort(probesTable, function(a,b) return a.quality < b.quality end)
+
+	-- https://stackoverflow.com/questions/2038418/associatively-sorting-a-table-by-value-in-lua
+	-- http://lua-users.org/wiki/OrderedAssociativeTable
 
 	return probesTable
 end
@@ -220,15 +328,21 @@ end
 
 	+--------------------------+
 	|+------------------------+|
-	||        Label           ||
+	||        Label           || GUIID_TestUI_NameLabel
 	|+------------------------+|
 	|+------------------------+|
-	||     Tools block        ||
+	||     Tools block        || GUIID_TestUI_ContentBlock
 	||+----------------------+||
 	|||     item block       |||
+	|||+---++---------------+|||
+	|||| i ||    label      ||||
+	|||+---++---------------+|||
 	||+----------------------+||
 	||+----------------------+||
 	|||     item block       |||
+	|||+---+ +--------------+|||
+	|||| i ||    label      ||||
+	|||+---+ +--------------+|||
 	||+----------------------+||
 	|+------------------------+|
 	+--------------------------+
@@ -255,19 +369,37 @@ Ou disarm réussi mais loocked => afficher menu
 Comment detecter que le trap est disarmed https://mwse.github.io/MWSE/events/trapDisarm/
 ]]
 
+-- forward functions declaration
+local onMouseButtonDown, onMouseWheel, highLightTool
 
+-- https://mwse.github.io/MWSE/events/uiActivated/#event-data
+local function uiActivatedCallback(e)
+	logDebug(string.format("uiActivatedCallback %s", e.element))
+end
+
+--- Create the window if there are items to select
 -- @param isProbe true if we need to select a probe, false for a lockpick
 local function createWindow(isProbe)
 	if tes3.menuMode() then
 		return
 	end	
 
-	if (tes3ui.findMenu(GUIID_MenuContents)) then
+	if (tes3ui.findMenu(GUIID_Menu)) then
         return
     end
 
+	-- TODO deplacer dans l'activation
+	-- TODO manage min quality
+	local toolsTable = searchTools(isProbe, 0)
+
+	local next = next
+	if next(toolsTable) == nil then
+		-- TODO change the message depending on the type of object. How to make the differnce between no tool or not good enough tool
+		tes3.messageBox("No tools found")
+	 end
+
 	-- Create window and frame
-	local menu = tes3ui.createMenu{ id = GUIID_MenuContents, fixedFrame = true }
+	local menu = tes3ui.createMenu{ id = GUIID_Menu, fixedFrame = true }
 
 	-- To avoid low contrast, text input windows should not use menu transparency settings
 	menu.alpha = 1.0
@@ -286,9 +418,8 @@ local function createWindow(isProbe)
 	-- TODO add a block in labelblock to center the text
 	--input_block.childAlignX = 0.5  -- centre content alignment
 	
-	local input_block = menu:createBlock{}
+	local input_block = menu:createBlock{ id = GUIID_TestUI_ContentBlock }
 	input_block.autoWidth = true
-	--input_block.width = 300
 	input_block.autoHeight = true
 	--input_block.childAlignX = 0.5  -- centre content alignment
 	input_block.flowDirection = "top_to_bottom"
@@ -301,17 +432,19 @@ local function createWindow(isProbe)
 	end
 	-- https://mwse.github.io/MWSE/types/tes3lockNode/
 
-	local objectTypeToSearh
+	-- TODO use searchTools funtion
+	--local objectTypeToSearh
 	local inventory = tes3.player.object.inventory
+	local itemsCount = 0
 	for _, v in pairs(inventory) do
         if v.object.objectType == objectTypeToSearch then
 			-- Our container block for this item.
-			local block = input_block:createBlock({})
+			local block = input_block:createBlock({ id = GUIID_TestUI_ItemBlock })
 			block.flowDirection = "left_to_right"
 			block.autoWidth = true
 			block.autoHeight = true
 			block.paddingAllSides = 3
-
+			-- TODO Keep nb or items
 			-- TODO filter on quality for lockpick
 			-- TODO filtrer par type de lockpick/name et maxCondition (ATTENTION propriété de l'objet lui même, pas du parent)
 
@@ -319,36 +452,79 @@ local function createWindow(isProbe)
 			-- block:setPropertyObject("QuickLoot:Item", item)
 			-- block:setPropertyInt("QuickLoot:Count", math.abs(stack.count))
 			-- block:setPropertyInt("QuickLoot:Value", item.value)
+			-- TODO set in item label block ? check with funtion onMouseButtonDown
+			block:setPropertyObject(modName .. ":Item", v.object)
 
 			-- Item icon.
-			--local icon = block:createImage({id = GUIID_QuickLoot_ContentBlock_ItemIcon, path = "icons\\" .. item.icon})
-			local icon = block:createImage({id = GUIID_QuickLoot_ContentBlock_ItemIcon, path = "icons\\" .. v.object.icon})
+			local icon = block:createImage({path = "icons\\" .. v.object.icon})
 			icon.borderRight = 5
 
 			-- https://mwse.github.io/MWSE/types/tes3lockpick/
 			-- 
 			-- Label text
-			local labelText = v.object.name .. " " .. " (12 %)"
-		
-			--local label = block:createLabel({id = GUIID_QuickLoot_ContentBlock_ItemLabel, text = labelText})
-			local label = block:createLabel({text = labelText})
+			local labelText = v.object.name
+
+			-- add the GUIID for later selection job
+			local label = block:createLabel({id = GUIID_TestUI_ItemBlockLabel, text = labelText})
 			label.absolutePosAlignY = 0.5
+
+			itemsCount = itemsCount + 1
 		end
 	end
+	currentMenu.itemsCount = itemsCount
+	currentMenu.currentIndex = 1
+
 	-- TODO Set position
 
 	-- Final setup
 	menu:updateLayout()
+	highLightTool()
+
+	-- events only registered during the life of the menu to ease event management and reduce mod incompatibility
+	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
+	event.register(tes3.event.mouseWheel, onMouseWheel)
+	event.register(tes3.event.uiActivated, uiActivatedCallback)
 end
 
 
+--- Destroy the Window if exists
 local function destroyWindow()
-	local menu = tes3ui.findMenu(GUIID_MenuContents)
+	local menu = tes3ui.findMenu(GUIID_Menu)
 
+	-- TODO add flag isDisplayed ?
 	if (menu) then
+		-- https://mwse.github.io/MWSE/apis/event/#eventunregister
+		event.unregister(tes3.event.mouseButtonDown, onMouseButtonDown)
+		event.unregister(tes3.event.mouseWheel, onMouseWheel)
+		event.unregister(tes3.event.uiActivated, uiActivatedCallback)
+
         tes3ui.leaveMenuMode()
         menu:destroy()
     end
+end
+
+
+--- Hightlist the tool in index
+highLightTool=function()
+	-- retrieve the block containing the items
+	local menu = tes3ui.findMenu(GUIID_Menu)
+
+	local contentBlock = menu:findChild (GUIID_TestUI_ContentBlock)
+	local children = contentBlock.children
+
+	-- iterate on blocks
+	for i, block in pairs(children) do
+		if (i == currentMenu.currentIndex) then
+			local label = block:findChild(GUIID_TestUI_ItemBlockLabel)
+			label.color = tes3ui.getPalette("active_color")
+		else
+			local label = block:findChild(GUIID_TestUI_ItemBlockLabel)
+			label.color = tes3ui.getPalette("normal_color")
+		end
+	end
+
+	-- update the display
+	contentBlock:updateLayout()
 end
 
 
@@ -357,6 +533,8 @@ end
 	event handlers
 
 ]]
+
+--#region events handler
 
 ---
 -- https://mwse.github.io/MWSE/events/activate/
@@ -397,39 +575,87 @@ local function onUnequipped(e)
 	-- [TestUI] DEBUG Unequipped Apprentice's Probe
 end
 
-
+-- TODO isolate the main code in a dedicated function
+-- TODO use space button instead of mouse down ??
+-- FIXME the menu prevents openning the menu (inventory, map) => need to destroy menu at right mouse
 --- Callback function for MouseButtonDown event
 -- https://mwse.github.io/MWSE/events/mouseButtonDown/
 -- @param e event
-local function onMouseButtonDown(e)
-	-- only in game
-	if tes3.menuMode() then
-		return
-	end
-	
-	-- mod must be enabled
-	if not config.modEnabled then
+onMouseButtonDown = function(e)
+	-- event registered only when menu is displayed so prerequisites checking is reduced
+
+	-- Left button = 0
+	if (e.button ~= 0) then
 		return
 	end
 
-	if (e.button == 3) then
-		tes3.messageBox(i18n("BUTTON_4"))
+	logDebug(string.format("onMouseButtonDown"))
+
+	-- retrieve the block containing the items
+	-- TOD put in currentMenu
+	local menu = tes3ui.findMenu(GUIID_Menu)
+	local contentBlock = menu:findChild (GUIID_TestUI_ContentBlock)
+	local selectedBlock = contentBlock.children[currentMenu.currentIndex]
+
+	-- https://mwse.github.io/MWSE/types/tes3uiElement/?h=create+block#getpropertyobject
+	-- retrieve the tool reference
+	local item = selectedBlock:getPropertyObject(modName .. ":Item")
+	logDebug(string.format("selected item %p", item))
+
+	-- TODO need to track the right weapon as when you pass from trapped to locked, the equipped will be the probe not the initial weapon same for weaponDrawn
+	-- keep track of the already equipped weapon
+	local currentEquipped = tes3.getEquippedItem({ actor = tes3.player })
+	logDebug(string.format("currentEquipped item %p", currentEquipped))
+
+	-- destroy menu
+	destroyWindow()
+
+	-- equip it
+	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#equip
+	if config.useWorstCondition then
+		tes3.mobilePlayer:equip({ item = item, selectWorstCondition = true })
+	else
+		tes3.mobilePlayer:equip({ item = item, selectBestCondition = true })
 	end
-	
-	if (e.button == 4) then
-		tes3.messageBox(i18n("BUTTON_5"))
+
+	-- store old mode
+	-- switch to ready mode
+	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#weaponready
+	tes3.mobilePlayer.weaponDrawn = true
+end
+
+
+-- FIXME pb avec MMC => need an update
+--- Update the selected tool in the menu depending on mousewheel direction
+-- @param e mousewheel event
+onMouseWheel = function(e)
+	-- event registered only when menu is displayed so prerequisites checking is reduced
+
+	-- TODO check other prerequisites ???
+	--logDebug(string.format("onMouseWheel"))
+
+	-- Change the selected tool depending on mousewheel direction (delta)
+	if e.delta > 0 then
+		previousTool()
+	else
+		nextTool()
 	end
+
+	-- Update display
+	highLightTool()
 end
 
 
 --- Event fired when target changes or target is disarmed or unlocked
 -- https://mwse.github.io/MWSE/events/activationTargetChanged/
+-- 
 -- @param e event object
 local function onActivationTargetChanged(e)
 	if not config.modEnabled then
 		return
 	end
 
+	-- e.current is a tes3reference
 	if e.current == nil then
 		logDebug(string.format("onActivationTargetChanged - No object"))
 		resetCurrentTarget()
@@ -437,17 +663,7 @@ local function onActivationTargetChanged(e)
 		return
 	end
 
-	-- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
-	local equippedProbe = tes3.getEquippedItem({
-        actor = tes3.player,
-        objectType = tes3.objectType.probe
-    })
-	-- TODO more intelligent test: depends on the status of the target locked => test on lockpick, trapped => test on probe
-	if (equippedProbe ~= nil) then
-		logDebug(string.format("Probe already equipped"))
-		return
-	end
-
+	-- TODO use tes3.getLocked https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked or tes3.getLockLevel https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel ?
 	-- 
 	if (currentTarget.target == e.current) then
 		logDebug(string.format("onActivationTargetChanged with same target %s - %p", e.current, e.current))
@@ -465,22 +681,42 @@ local function onActivationTargetChanged(e)
 				-- TODO update Window instead
 				destroyWindow()		-- Not necessary as the window is closed after selection
 				createWindow(false)
+				highLightTool()
 			end
 		end
 	else
-		-- TODO check objectType
+		-- New target, check if it's locked or trapped
 		if (e.current.object.objectType == tes3.objectType.container) or (e.current.object.objectType == tes3.objectType.door) then
 			local lockNode = e.current.lockNode
 			if lockNode ~= nil then
 				-- lockNode not nil => locked, trapped or both
 				currentTarget.target = e.current
 
-				if lockNode.locked then
-					currentTarget.isLocked = true
-				end
-	
+				-- 3 cases
+				-- trapped => probe equipped => return
+				-- locked => lockpick equipped => return
+				-- trapped + locked => probe equipped => return, lockpick equipped => display menu
+
+				-- priority is trapped
+				-- TODO check for an equipped probe
 				if (lockNode.trap ~= nil) then
-					currentTarget.isTrapped = true
+					-- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
+					if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.probe }) then
+						logDebug(string.format("Probe already equipped"))
+						return
+					else
+						currentTarget.isTrapped = true
+					end
+				end
+
+				-- FIXME when trapped and equipped lockpick => no menu
+				if lockNode.locked and (lockNode.trap == nil) then
+					currentTarget.isLocked = true
+					-- check for an equipped lockpick
+					if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
+						logDebug(string.format("lockpick already equipped"))
+						return
+					end
 				end
 			end
 		end
@@ -496,59 +732,43 @@ local function onActivationTargetChanged(e)
 
 	-- TODO destroy UI when object changes
 	-- TODO store locknode for locklevel
+	searchTools(true, 0)
+	searchTools(false, 0)
 
-	searchProbes()
-					
 	if currentTarget.isTrapped then
 		tes3.messageBox("Trapped")
 		createWindow(true)
+		highLightTool()
 	else
 		tes3.messageBox("Locked")
 		createWindow(false)
+		highLightTool()
 	end
 end
 
 
---- Callback function for CombatStarted event
--- https://mwse.github.io/MWSE/events/combatStarted/
--- @param e event object
-local function onCombatStarted(e)
-	-- mod must be enabled
-	if not config.modEnabled then
-		return
-	end
-
-	-- Sometimes it's useful to log debug info (only logged when debugMode is true)
-	logDebug(string.format("onCombatStarted event - actor %d, target %d", e.actor.actorType, e.target.actorType))
-
-	-- https://mwse.github.io/MWSE/references/actor-types/
-	-- is the attacking actor is not the player ?
-	if (e.actor.actorType ~= tes3.actorType.player) then
-		tes3.messageBox(i18n("HELP_ATTACKED"))
-	else
-		tes3.messageBox(i18n("BEWARE_SCUM"))
-	end
-end
-
+--#endregion
 
 --[[
 	constructor
 ]]
 
+--- Initialization register the events and the GUID for menu
 local function initialize()
 	-- registers needed events, better to use tes.event reference instead of the name https://mwse.github.io/MWSE/references/events/
-	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
-	--event.register(tes3.event.combatStarted, onCombatStarted)
 	event.register(tes3.event.activationTargetChanged, onActivationTargetChanged)
 
 	event.register(tes3.event.unequipped, onUnequipped)
 	event.register(tes3.event.menuEnter, onMenuEnter)
 	--event.register(tes3.event.activate, onActivate)
 	--event.register(tes3.event.trapDisarm, onTrapDisarm)
+	--event.register(tes3.event.equip, onEquip)
 
-	GUIID_MenuContents = tes3ui.registerID("TestUI_MenuContents")
-	GUIID_TestUI_ContentBlock = tes3ui.registerID("TestUI:ContentBlock")
-	GUIID_TestUI_NameLabel = tes3ui.registerID("TestUI:NameLabel")
+	GUIID_Menu = tes3ui.registerID(modName .. ":Menu")
+	GUIID_TestUI_ContentBlock = tes3ui.registerID(modName .. ":ContentBlock")
+	GUIID_TestUI_ItemBlock = tes3ui.registerID(modName .. ":ItemBlock")
+	GUIID_TestUI_ItemBlockLabel = tes3ui.registerID(modName .. ":ItemBlockLabel")
+	--GUIID_TestUI_NameLabel = tes3ui.registerID("TestUI:NameLabel")
 
 	logInfo(modName .. " " .. modVersion .. " initialized")
 end
@@ -556,11 +776,12 @@ event.register(tes3.event.initialized, initialize)
 
 
 --[[
-	mod config menu
+	Mod Config Menu
 
 	https://easymcm.readthedocs.io/en/latest/
-
 ]]
+
+--#region MCM
 
 ---
 -- @param id name of the variable
@@ -569,7 +790,7 @@ local function createtableVar(id)
 	return mwse.mcm.createTableVariable{
 		id = id,
 		table = config
-	}  
+	}
 end
 
 
@@ -597,6 +818,14 @@ local function registerModConfig()
 	}
 
 	local catSettings = page:createCategory("Mod Settings")
+
+	catSettings:createYesNoButton {
+		label = "Equip worst item",
+		description = "Equip the worst item (already used) to prevent having too many used tools",
+		variable = createtableVar("useWorstCondition"),
+		defaultSetting = true,
+	}
+
 	catSettings:createSlider {
 		label = "Time Scale",
 		description = "Changes the speed of the day/night cycle.",
@@ -641,3 +870,5 @@ local function registerModConfig()
 end
 
 event.register(tes3.event.modConfigReady, registerModConfig)
+
+--#endregion
