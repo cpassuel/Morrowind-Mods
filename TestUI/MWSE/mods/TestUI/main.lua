@@ -41,6 +41,11 @@
 	In case of issues with you mod, check MWSE.log flie in Morrowind folder, you will see^
 
 	Parts of the code with inspired from SecurityEnhanced
+
+	Features
+	If lockpick / probe already equipped => do not display menu
+	Once container / door is disarmed and unlocked => returns to inital state (weapon, readymode)
+	
 ]]--
 
 
@@ -138,6 +143,23 @@ end
 
 ]]--
 
+---Returns a table with sorted index of tbl https://stackoverflow.com/a/24565797
+---@param tbl any
+---@param sortFunction any
+---@return table
+local function getKeysSortedByValue(tbl, sortFunction)
+	local keys = {}
+	for key in pairs(tbl) do
+		table.insert(keys, key)
+	end
+
+	table.sort(keys, function(a, b)
+		return sortFunction(tbl[a], tbl[b])
+	end)
+
+	return keys
+end
+
 
 --- Reset the current target to no target
 local function resetCurrentTarget()
@@ -147,7 +169,7 @@ local function resetCurrentTarget()
 end
 
 
---- Log a string as Info level
+--- Log a string as Info level in MWSE.log
 -- @param msg string to be logged as Info in MWSE.log
 local function logInfo(msg)
 	-- https://www.lua.org/pil/5.2.html
@@ -167,10 +189,17 @@ local function logDebug(msg)
 end
 
 
+--- Log an error message to MWSE.log
+-- @param msg string to be logged as Error in MWSE.log
+local function logError(msg)
+	mwse.log('[' .. modName .. '] ' .. 'ERROR ' .. msg)
+end
+
+
 --- Update the currentIndex by moving to the next tool/item
 local function nextTool()
 	if currentMenu.itemsCount < 1 then
-		logDebug("ERROR Try to get the next item but there are no items")
+		logError("(nextTool) Try to get the next item but there are no items")
 	end
 
 	if currentMenu.currentIndex == currentMenu.itemsCount then
@@ -184,7 +213,7 @@ end
 --- Update currentIndex by moving to the previous item
 local function previousTool()
 	if currentMenu.itemsCount < 1 then
-		logDebug("ERROR Try to get the previous item but there are no items")
+		logError("(previousTool) Try to get the previous item but there are no items")
 	end
 
 	if currentMenu.currentIndex == 1 then
@@ -195,19 +224,10 @@ local function previousTool()
 end
 
 
--- ere
-local function onEquip(e)
-	logDebug("onEquip")
-	-- get condition
-	e.block = true
-	return false
-end
-
-
 --- Search in the inventory for lockpicks or probes with a minimal quality
 -- @param true to search probes, false to search lockpicks
 -- @param minQual minimal quality of the tool requested
--- @returns table with one entry par tool with quality information, can be nil if no tool found
+-- @return unsorted table of tables with one entry par tool with quality information, can be nil if no tool found
 local function searchTools(searchProbes, minQual)
 	local inventory = tes3.player.object.inventory
 
@@ -231,10 +251,9 @@ local function searchTools(searchProbes, minQual)
 
 			-- check min quality
 			if toolQuality >= minQual then
-				-- add only one type of tool
+				-- add only one *type* of tool
 				if (toolsTable[toolName] == nil) then
 					toolsTable[toolName]={}
-					-- update
 					toolsTable[toolName].tool = tool
 					toolsTable[toolName].quality = toolQuality
 					logDebug(string.format("Adding tool %s - %p (%.2f)",toolName, tool, toolQuality))
@@ -243,82 +262,7 @@ local function searchTools(searchProbes, minQual)
 		end
 	end
 
-	-- https://stackoverflow.com/a/49625819
-	-- https://stackoverflow.com/questions/2038418/associatively-sorting-a-table-by-value-in-lua
-	-- http://lua-users.org/wiki/OrderedAssociativeTable
-	-- sort tools by quality asc
-	-- FIXME pb avec le sort
-	table.sort(toolsTable, function(a,b) return a.quality > b.quality end)
-
-	-- DEBUG
-	for _,v in pairs(toolsTable) do
-		logDebug(string.format("Tool %s",v.tool))
-	end
-
 	return toolsTable
-end
-
-
--- TODO DELETE
--- TODO generalize for probe and lockpick (bool, minQual)
---- Search for the probes in the inventory
--- @return a table with one entry by item (can be empty if no probes available)
-local function searchProbes()
-	local probesTable = {}
-
-	local inventory = tes3.player.object.inventory
-
-	-- TODO refactor pour chercher les lockpick
-	for _, stack in pairs(inventory) do
-		if stack.object.objectType == tes3.objectType.probe then
-			-- TODO how to get condition of the item ? https://mwse.github.io/MWSE/types/tes3itemData/
-			-- https://mwse.github.io/MWSE/types/tes3itemData/
-			-- stack is tes3itemStack https://mwse.github.io/MWSE/types/tes3itemStack/
-			local probe = stack.object	-- tes3item
-			local probeName = probe.name
-			local probeQuallty = probe.quality	-- valid for probes
-
-			-- TODO test to equip and cancel it to get the condition https://mwse.github.io/MWSE/events/equip
-			-- possibilité de ne tracker que le type d'objet que l'on veut selectionner
-			-- TODO find a way to get tool condition when unequipped
-			-- Seems to have variables once equipped
-			-- https://mwse.github.io/MWSE/types/tes3itemStack/#object
-			-- if (stack.variables) then
-			-- 	-- No need to iterate over all items in stack as they all have the same condition
-			-- 	condition = stack.variables[1].condition
-			-- end
-			-- TEST il peut avoir plusieurs items => c'est pourquoi il faut parcourir la liste
-			-- mais dans une stack, tous les items ont la même condition => donc le 1er devrait suffir
-			-- if (stack.variables) then
-			-- 	for _, data in pairs(stack.variables) do
-			-- 		logDebug(string.format("data probe condition %d" , data.condition))
-			-- 	end
-			-- end
-			-- TODO refactor as condition is not known when unequipped
-			-- TODO Refactor code to update once
-			-- 
-
-			logDebug(string.format("Found probe %s - %p",probeName, probe))
-
-			-- add only one type of probe
-			if (probesTable[probeName] == nil) then
-				probesTable[probeName]={}
-				-- update
-				probesTable[probeName].probe = probe
-				probesTable[probeName].quality = probeQuallty
-				probesTable[probeName].count = stack.count
-				logDebug(string.format("Adding probe %s - %p (%d)",probeName, probe, stack.count))
-			end
-		end
-	end
-
-	-- TODO sort by quality
-	table.sort(probesTable, function(a,b) return a.quality < b.quality end)
-
-	-- https://stackoverflow.com/questions/2038418/associatively-sorting-a-table-by-value-in-lua
-	-- http://lua-users.org/wiki/OrderedAssociativeTable
-
-	return probesTable
 end
 
 
@@ -369,20 +313,23 @@ Ou disarm réussi mais loocked => afficher menu
 Comment detecter que le trap est disarmed https://mwse.github.io/MWSE/events/trapDisarm/
 ]]
 
+
 -- forward functions declaration
 local onMouseButtonDown, onMouseWheel, highLightTool
 
 -- https://mwse.github.io/MWSE/events/uiActivated/#event-data
 local function uiActivatedCallback(e)
 	logDebug(string.format("uiActivatedCallback %s", e.element))
+	-- TODO Destroy menu
 end
+
 
 --- Create the window if there are items to select
 -- @param isProbe true if we need to select a probe, false for a lockpick
 local function createWindow(isProbe)
 	if tes3.menuMode() then
 		return
-	end	
+	end
 
 	if (tes3ui.findMenu(GUIID_Menu)) then
         return
@@ -396,7 +343,7 @@ local function createWindow(isProbe)
 	if next(toolsTable) == nil then
 		-- TODO change the message depending on the type of object. How to make the differnce between no tool or not good enough tool
 		tes3.messageBox("No tools found")
-	 end
+	end
 
 	-- Create window and frame
 	local menu = tes3ui.createMenu{ id = GUIID_Menu, fixedFrame = true }
@@ -448,14 +395,11 @@ local function createWindow(isProbe)
 			-- TODO filter on quality for lockpick
 			-- TODO filtrer par type de lockpick/name et maxCondition (ATTENTION propriété de l'objet lui même, pas du parent)
 
-			-- Store the item/count on the block for later logic.
-			-- block:setPropertyObject("QuickLoot:Item", item)
-			-- block:setPropertyInt("QuickLoot:Count", math.abs(stack.count))
-			-- block:setPropertyInt("QuickLoot:Value", item.value)
-			-- TODO set in item label block ? check with funtion onMouseButtonDown
+			-- Store the item info on the block for later logic.
+			-- https://mwse.github.io/MWSE/types/tes3uiElement/?h=set+property+object#setpropertyobject
 			block:setPropertyObject(modName .. ":Item", v.object)
 
-			-- Item icon.
+			-- Item icon
 			local icon = block:createImage({path = "icons\\" .. v.object.icon})
 			icon.borderRight = 5
 
@@ -493,6 +437,7 @@ local function destroyWindow()
 
 	-- TODO add flag isDisplayed ?
 	if (menu) then
+		-- unregister events registered only for the life of the menu 
 		-- https://mwse.github.io/MWSE/apis/event/#eventunregister
 		event.unregister(tes3.event.mouseButtonDown, onMouseButtonDown)
 		event.unregister(tes3.event.mouseWheel, onMouseWheel)
