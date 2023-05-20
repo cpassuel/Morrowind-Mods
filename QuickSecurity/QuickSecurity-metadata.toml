@@ -1,0 +1,23 @@
+# Holds metadata about the mod
+# https://mwse.github.io/MWSE/guides/metadata/
+
+[package]
+name = "Quick Security"
+description = "This a mod to easy the use of lockpicks and probes"
+#homepage = ""
+#repository = ""
+authors = ["Thinuviel"]
+version = "0.10"
+
+# MWSE specific information about this mod
+[tools.mwse]
+# mod folder
+lua-mod = "QuickSecurity"
+
+# adapt to your minimal version of MWSE needed
+[dependencies.mwse]
+buildnumber = 2907
+
+# in case your mod needs a minimal version of mge-xe
+[dependencies.mge-xe]
+version = ">=0.10.0"
