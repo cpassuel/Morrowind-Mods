@@ -1,5 +1,5 @@
 --[[
-	QuickSecurity
+	Quick Security
 	@author		
 	@version	0.10
 	@changelog	0.10 Initial version
@@ -8,7 +8,7 @@
 
 -- mod informations
 local modName = "Quick Security"
-local modFolder = "QuickSecurity"	-- this can have a name different of the folder
+local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
 local modVersion = "V0.10"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
@@ -222,10 +222,12 @@ end
 
 --- Reset the current target to no target
 local function resetCurrentTarget()
+	logDebug(string.format("Restoring cureent target"))
 	currentTarget.target = nil
 	currentTarget.isTrapped = false
 	currentTarget.isLocked = false
 end
+
 
 --[[
 
@@ -253,8 +255,9 @@ end
 	+--------------------------+
 
     Menu
-        Label block (add a chil for alignment ?)
-        Tools block
+        titleBlock
+			titleLabel
+        toolsListBlock
             Tool block
                 Tool icon block
                 Tool label block
@@ -291,6 +294,17 @@ local function uiActivatedCallback(e)
 end
 
 
+---Restore the weapon and weaponDrawn state before the tool equipping
+local function restoreWeapon()
+	-- check prerequisites
+
+	logDebug(string.format("Restoring %s - %p", currentMenu.weapon, currentMenu.weapon))
+	tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
+	tes3.mobilePlayer.weaponDrawn = currentMenu.weaponDrawn
+end
+
+
+---Equip the selected tool in the menu
 local function equipSelectedTool()
 
     local function retrieveSelectedTool()
@@ -335,7 +349,7 @@ local function equipSelectedTool()
 end
 
 
---Uupdate the title depending on type of tool
+--Uupdate the menu title depending on the type of tool in parameter
 ---@param isProbe boolean true if looking for probe false for lockpick
 local function updateTitle(isProbe)
 	local menu = tes3ui.findMenu(GUIID_Menu)
@@ -353,9 +367,8 @@ local function updateTitle(isProbe)
 end
 
 
---- Create the window if there are items to select
--- @param isProbe true if we need to select a probe, false for a lockpick
--- @param toolsTable list of tools to display (MUST NOT BE EMPTY)
+---Create the window with the tools list from the table in paramter
+---@param toolsTable table of tools to display (MUST NOT BE EMPTY)
 local function createWindow(toolsTable)
 	if tes3.menuMode() then
 		return
@@ -377,50 +390,46 @@ local function createWindow(toolsTable)
 	-- To avoid low contrast, text input windows should not use menu transparency settings
 	menu.alpha = 1.0
 
-	-- TODO rename UI obejcts
-
 	-- Create layout (update title later)
-	local nameBlock = menu:createBlock({ id = GUIID_TestUI_TitleBlock })
-	nameBlock.autoHeight = true
-	nameBlock.autoWidth = true
-	nameBlock.paddingAllSides = 1
-	nameBlock.childAlignX = 0.5
-	
-	local nameLabel = nameBlock:createLabel({ text = 'To update' })
-	nameLabel.color = tes3ui.getPalette("header_color")
-	nameBlock:updateLayout()
-    nameBlock.widthProportional = 1.0
-	menu.minWidth = nameLabel.width
+	local titleBlock = menu:createBlock({ id = GUIID_TestUI_TitleBlock })
+	titleBlock.autoHeight = true
+	titleBlock.autoWidth = true
+	titleBlock.paddingAllSides = 1
+	titleBlock.childAlignX = 0.5
 
-	local input_block = menu:createBlock{ id = GUIID_TestUI_ContentBlock }
-	input_block.autoWidth = true
-	input_block.autoHeight = true
-	--input_block.childAlignX = 0.5  -- centre content alignment
-	input_block.flowDirection = "top_to_bottom"
+	local titleLabel = titleBlock:createLabel({ text = '' })
+	titleLabel.color = tes3ui.getPalette("header_color")
+	titleBlock:updateLayout()
+    titleBlock.widthProportional = 1.0
+	menu.minWidth = titleLabel.width
+
+	local toolsListBlock = menu:createBlock{ id = GUIID_TestUI_ContentBlock }
+	toolsListBlock.autoWidth = true
+	toolsListBlock.autoHeight = true
+	toolsListBlock.flowDirection = "top_to_bottom"
 
 	local itemsCount = 0
     local sortedKeys = getKeysSortedByValue(toolsTable, function(a, b) return a.quality < b.quality end)
     for _,v in pairs(sortedKeys) do
 		-- Our container block for this item.
-		local block = input_block:createBlock({ id = GUIID_TestUI_ItemBlock })
-		block.flowDirection = "left_to_right"
-		block.autoWidth = true
-		block.autoHeight = true
-		block.paddingAllSides = 3
+		local toolBlock = toolsListBlock:createBlock({ id = GUIID_TestUI_ItemBlock })
+		toolBlock.flowDirection = "left_to_right"
+		toolBlock.autoWidth = true
+		toolBlock.autoHeight = true
+		toolBlock.paddingAllSides = 3
 
-		-- Store the item info on the block for later logic.
+		-- Store the item info on the toolBlock for later logic.
 		-- https://mwse.github.io/MWSE/types/tes3uiElement/?h=set+property+object#setpropertyobject
-		block:setPropertyObject(modName .. ":Item", toolsTable[v].tool)
+		toolBlock:setPropertyObject(modName .. ":Item", toolsTable[v].tool)
 
 		-- create Item icon block
-		local icon = block:createImage({path = "icons\\" .. toolsTable[v].tool.icon})
+		local icon = toolBlock:createImage({path = "icons\\" .. toolsTable[v].tool.icon})
 		icon.borderRight = 5
 
 		-- Label text
 		local labelText = toolsTable[v].name
-
 		-- add the GUIID for later selection job
-		local label = block:createLabel({id = GUIID_TestUI_ItemBlockLabel, text = labelText})
+		local label = toolBlock:createLabel({id = GUIID_TestUI_ItemBlockLabel, text = labelText})
 		label.absolutePosAlignY = 0.5
 
 		itemsCount = itemsCount + 1
@@ -434,7 +443,7 @@ local function createWindow(toolsTable)
 	highLightTool()
 
 	-- events only registered during the life of the menu to ease event management and reduce mod incompatibility
-	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
+	--event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
 	event.register(tes3.event.mouseWheel, onMouseWheel)
 	event.register(tes3.event.uiActivated, uiActivatedCallback)
 end
@@ -446,9 +455,10 @@ local function destroyWindow()
 
 	-- TODO add flag isDisplayed ?
 	if (menu) then
+		logDebug("Destroy Menu")
 		-- unregister events registered only for the life of the menu 
 		-- https://mwse.github.io/MWSE/apis/event/#eventunregister
-		event.unregister(tes3.event.mouseButtonDown, onMouseButtonDown)
+		--event.unregister(tes3.event.mouseButtonDown, onMouseButtonDown)
 		event.unregister(tes3.event.mouseWheel, onMouseWheel)
 		event.unregister(tes3.event.uiActivated, uiActivatedCallback)
 
@@ -458,7 +468,7 @@ local function destroyWindow()
 end
 
 
---- Hightlist the tool in index
+--- Highlight the tool associated to the currentIndex
 highLightTool=function()
 	-- retrieve the block containing the items
 	local menu = tes3ui.findMenu(GUIID_Menu)
@@ -494,27 +504,47 @@ end
 -- https://mwse.github.io/MWSE/apis/event/#eventregister
 -- event.register(tes3.event.keyDown, onKeyDown, { filter = tes3.scanCode.space })
 local function onKeyDown(e)
-    --
-    
+	if tes3ui.findMenu(GUIID_Menu) ~= nil then
+		logDebug("onKeyDown")
+		equipSelectedTool()
+	end
 end
+
 
 --- You NEED to destroy your menu when entering menu mode to avoid locking the UI
 -- https://mwse.github.io/MWSE/events/menuEnter/
--- @param e event object
+---@param e any event object for menuEnter
 local function onMenuEnter(e)
 	logDebug(string.format("MenuEnter"))
 	destroyWindow()
 end
 
+
 --- Manage unequipped event
 -- https://mwse.github.io/MWSE/events/unequipped/
--- @parma
+---@param e any event object
 local function onUnequipped(e)
-	tes3.messageBox("Unequipped")
+	if not config.modEnabled then
+		return
+	end
+
+	if currentTarget.target == nil then
+		return
+	end
+
+	if (e.item ~= tes3.objectType.probe) and (e.item ~= tes3.objectType.lockpick) then
+		return
+	end
+
+	-- TODO better checks because when you equip a tool, you can unequip a weapon => dedicated variable
+	-- TODO check if restoreWeapon() should be ok because currentTarget is nil
+	tes3.messageBox("DEBUG tool broken")
+
 	logDebug(string.format("Unequipped %s", e.item.name))
 	-- event unequipped when the probe/locpick is completly used (condition = 0)
-	-- [TestUI] DEBUG Unequipped Apprentice's Probe
+	-- => redo the same as in ActivatedChanged
 end
+
 
 -- TODO isolate the main code in a dedicated function
 -- TODO use space button instead of mouse down ??
@@ -565,6 +595,7 @@ onMouseButtonDown = function(e)
 	tes3.mobilePlayer.weaponDrawn = true
 end
 
+
 -- FIXME pb avec MMC => need an update on MMC
 --- Update the selected tool in the menu depending on mousewheel direction
 -- @param e mousewheel event
@@ -586,7 +617,8 @@ onMouseWheel = function(e)
 end
 
 
---- Event fired when target changes or target is disarmed or unlocked
+-- TODO isolate in a dedicated function for use on unEuipped
+--- Event fired when a target changes or a target is disarmed or unlocked
 -- same target
 --   trapped -> disarmed
 --     locked => display menu
@@ -609,6 +641,7 @@ local function onActivationTargetChanged(e)
 		return
 	end
 
+	-- TODO isolate this part in a dedicated function
     local searchForProbe = false
 
     -- check if same target => meaning it has been disarmed or unlocked
@@ -623,7 +656,8 @@ local function onActivationTargetChanged(e)
 
         if not tes3.getLocked({ reference = e.current }) then
             -- final
-            -- restoreWeapon
+			resetCurrentTarget()
+            restoreWeapon()
             return
         else
             -- locked
@@ -635,10 +669,11 @@ local function onActivationTargetChanged(e)
 	else
 		-- New target, check if it's a door / container
 		if (e.current.object.objectType ~= tes3.objectType.container) and (e.current.object.objectType ~= tes3.objectType.door) then
+			resetCurrentTarget()
             return
         end
 
-		-- https://mwse.github.io/MWSE/apis/tes3/#tes3gettrap
+		-- https://mwse.github.io/MWSE/apis/tes3/#tes3gettrap (returns nil if not trapped)
         if tes3.getTrap({ reference = e.current }) then
             -- test if probe equipped
             -- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
@@ -648,9 +683,8 @@ local function onActivationTargetChanged(e)
             end
             currentTarget.isTrapped = true
             searchForProbe = true
-            -- display windows
         else
-			-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked
+			-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked (returns true if locked)
             if tes3.getLocked({ reference = e.current }) then
                 -- check for an equipped lockpick
                 if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
@@ -662,29 +696,25 @@ local function onActivationTargetChanged(e)
                 searchForProbe = false
             else
                 -- not locked and not trapped => exit
+				resetCurrentTarget()
                 return
             end
         end
-
-        -- getTrap returns not nil if is tracpped
-        -- getLocked returns true if locked
-		--tes3.messageBox(string.format("is Trapped %s", tes3.getTrap({ reference = e.current })))
-		--tes3.messageBox(string.format("is Locked %s", tes3.getLocked({ reference = e.current })))
-    end
-
-    -- 
-    local minQuality = 0
-    if not searchForProbe then
-		-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel
-		minQuality = getLockpickMinQuality(tes3.getLockLevel({ reference = e.current }))
-        -- compute min quality
     end
 
     -- trapped or locked and no related tool equipped
+
+    local minQuality = 0
+    if not searchForProbe then
+        -- compute min quality
+		-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel
+		minQuality = getLockpickMinQuality(tes3.getLockLevel({ reference = e.current }))
+    end
+
     local items = searchTools(searchForProbe, minQuality)
     currentTarget.target = e.current
 
-    -- check for existing items
+    -- If no tool just display a message
     local next = next
     if next(items) == nil then
         if searchForProbe then
@@ -725,6 +755,9 @@ local function initialize()
 
 	event.register(tes3.event.unequipped, onUnequipped)
 	event.register(tes3.event.menuEnter, onMenuEnter)
+	-- TODO register only when menu is displayed
+	-- TODO Use key in config file
+	event.register(tes3.event.keyDown, onKeyDown, { filter = tes3.scanCode.space })
 
 	GUIID_Menu = tes3ui.registerID(modName .. ":Menu")
 	GUIID_TestUI_ContentBlock = tes3ui.registerID(modName .. ":ContentBlock")
@@ -811,7 +844,7 @@ local function registerModConfig()
     -- For DEBUG only
 	catSettings:createSlider {
 		label = "Quality slider",
-		description = "Changes minimal quality of the lockpick * 10",
+		description = "DEBUG Changes minimal quality of the lockpick * 10",
 		min = 0,
 		max = 30,
 		step = 1,
