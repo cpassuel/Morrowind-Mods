@@ -1,17 +1,16 @@
-# Holds metadata about the mod
-# https://mwse.github.io/MWSE/guides/metadata/
+# Holds metadata about the mod https://mwse.github.io/MWSE/guides/metadata/
 
 [package]
 name = "Quick Security"
-description = "This a mod to easy the use of lockpicks and probes"
-#homepage = ""
-#repository = ""
+description = "Mod that allows you to select lockpicks and probes from a selection list on doors / containers"
+homepage = "https://www.nexusmods.com/morrowind/mods/52918"
+repository = "https://github.com/cpassuel/Morrowind-Mods"
 authors = ["Thinuviel"]
 version = "0.10"
 
 # MWSE specific information about this mod
 [tools.mwse]
-# mod folder
+# mod folder don't mix up with mod name
 lua-mod = "QuickSecurity"
 
 # adapt to your minimal version of MWSE needed
