@@ -23,6 +23,13 @@ many differences between MWSE and OpenMW Lua implementation that would require a
 complete rewrite of the mod. There are also some lacks in OpenMW implementation
 (or I didn't search enough or documentation is not enough detailed)
 
+## Quick Security
+
+This mod that allows you to select lockpicks or probes from a selection list instead
+having to go in inventory to select it and equip it.
+
+This mod is available on Nexus Mods https://www.nexusmods.com/morrowind/mods/52918
+
 ## Sample Mod
 
 The goal of this mod is to give a starting template with some examples to create a
