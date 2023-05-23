@@ -26,10 +26,11 @@ local currentMenu = {
 	itemsCount = 0,
 	currentIndex = 0,
 	window = nil,
-	--
+	-- TODO put in playerAttribute
 	isWeaponAStateStored=false,	-- set to true if trapped
 	weapon = nil,
-	weaponDrawn = true,
+	weaponDrawn = false,
+	weaponReady = false,
 }
 
 -- keep information about the target (container/door trapped or locked or both)
@@ -37,6 +38,16 @@ local currentTarget = {
 	target = nil,
 	isTrapped = false,
 	isLocked = false,
+}
+
+-- TODO rename in playerInformation
+local playerAttribute = {
+	agility=0,
+	luck=0,
+	security=0,
+	--
+	currentFatigue=0,
+	maxFatigue=0,
 }
 
 
@@ -70,10 +81,15 @@ local modDefaultConfig = {
 	useWorstCondition = true,	-- true => use worst condition tool (already used), false best condution (maybe put a 3 states value: worst, don't care, best)
     useCalcUnlockChance = true,
     minQuality = 10,
+-- "myKeybind":{
+--     "keyCode":57,
+--     "isShiftDown":false,
+--     "isAltDown":false,
+--     "isControlDown":false
+--   },
 	--
 	debugMode = true,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
 }
-
 
 -- Load config file, and fill in default values for missing elements.
 local config = mwse.loadConfig(modConfig)
@@ -170,6 +186,44 @@ local function previousTool()
 end
 
 
+--- Compute and save current player stats 
+local function getPlayerStats()
+	-- skill et attributes
+	local player = tes3.mobilePlayer
+	
+	playerAttribute.security = player.security.current
+	playerAttribute.agility = player.agility.current
+	playerAttribute.luck = player.luck.current
+
+	playerAttribute.currentFatigue = player.fatigue.current
+	playerAttribute.maxFatigue = player.fatigue.base
+end
+
+
+--- Compute the minimal lockpick quality for the given locklevel at current fatigue and at max fatigue
+---@param locklevel number level of the lock to unlock
+---@return number minimal lockpick quality for the given locklevel
+-- chance to successfully unlock
+-- ((Security + (Agility/5) + (Luck/10)) * Lockpick multiplier * (0.75 + 0.5 * Current Fatigue/Maximum Fatigue) - Lock Level)%
+-- 2 partie ind�pendantes Security + (Agility/5) + (Luck/10)) et (0.75 + 0.5 * Current Fatigue/Maximum Fatigue)
+-- formule qui renvoie 2 r�sultats % avec current fatigue et % avec full fatigue
+-- input Lockpick multiplier (from inventory) et Lock Level
+-- https://riptutorial.com/lua/example/4082/multiple-results
+local function getMinLockPickMultiplier(locklevel)
+	local lpQualCurFatigue, lpQualMaxFatigue
+
+	getPlayerStats()
+
+	-- -- lpmulmintcurrent = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5 * fatcurrent/fatmax)
+	lpQualCurFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
+	-- -- lpmultminfull = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5)
+	-- lpQualMaxFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5))
+
+	-- return lpQualCurFatigue, lpQualMaxFatigue
+	return lpQualCurFatigue
+end
+
+
 ---Compute the minimal quality of the lockpick depending on player stats and lock level
 ---@param level integer level of the lock
 ---@return number minimal needed quality of the lockpick
@@ -178,9 +232,11 @@ local function getLockpickMinQuality(level)
 end
 
 
+-- TODO implement current & maxFatigue quality
+-- TODO use a different color for lockpicks needing full fatigue ?
 --- Search in the inventory for lockpicks or probes with a minimal quality
--- @param true to search probes, false to search lockpicks
--- @param minQual minimal quality of the tool requested
+---@param searchProbes boolean true to search probes, false to search lockpicks
+---@param minQual number minimal quality of the tool requested
 -- @return unsorted table of tables with one entry par tool with quality information, can be nil if no tool found
 local function searchTools(searchProbes, minQual)
 	local inventory = tes3.player.object.inventory
@@ -222,10 +278,17 @@ end
 
 --- Reset the current target to no target
 local function resetCurrentTarget()
-	logDebug(string.format("Restoring cureent target"))
+	logDebug(string.format("Restoring current target"))
 	currentTarget.target = nil
 	currentTarget.isTrapped = false
 	currentTarget.isLocked = false
+end
+
+
+---Manage action on a non nil target
+---@param target any
+local function manageCurrentTarget(target)
+	--
 end
 
 
@@ -262,8 +325,6 @@ end
                 Tool icon block
                 Tool label block
 
-Populate probe: besoin uniquement de la position de la target (position fixé dans le createWindow) ?
-Populate lockpick: besoon du lock et des stats player pour filter les lock utiles (mettre une option pour afficher tout ?)
 s'il y a une clé pour le lock et que le joueur l'a, ne pas afficher la fenetre ?
 check if a tool is already equipped before displaying the window
 
@@ -280,12 +341,11 @@ Object loocked/trapped actived
 Ne plus afficher le menu à moins que l'outil soit cassé
 Ou disarm réussi mais loocked => afficher menu
 
-Comment detecter que le trap est disarmed https://mwse.github.io/MWSE/events/trapDisarm/
 ]]
 
 -- TODO try to reorganize functions
 -- forward functions declaration
-local onMouseButtonDown, onMouseWheel, highLightTool
+local onMouseWheel, highLightTool
 
 -- https://mwse.github.io/MWSE/events/uiActivated/#event-data
 local function uiActivatedCallback(e)
@@ -328,6 +388,7 @@ local function equipSelectedTool()
     if not currentMenu.isWeaponAStateStored then
         currentMenu.weapon = tes3.getEquippedItem({ actor = tes3.player })
         currentMenu.weaponDrawn = tes3.mobilePlayer.weaponDrawn
+		currentMenu.weaponReady = tes3.mobilePlayer.weaponReady
         currentMenu.isWeaponAStateStored = true
     end
 
@@ -346,6 +407,8 @@ local function equipSelectedTool()
 	-- switch to ready mode
 	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#weaponready
 	tes3.mobilePlayer.weaponDrawn = true
+	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/?h=weapondrawn#weaponready
+	tes3.mobilePlayer.weaponReady = true
 end
 
 
@@ -520,6 +583,8 @@ local function onMenuEnter(e)
 end
 
 
+-- FIXME tool broken does not work => pas le message broken
+-- FIXME tool broken does not work => pas de menu
 --- Manage unequipped event
 -- https://mwse.github.io/MWSE/events/unequipped/
 ---@param e any event object
@@ -528,11 +593,14 @@ local function onUnequipped(e)
 		return
 	end
 
+	logDebug(string.format("Unequipped %s", e.item.name))
+
 	if currentTarget.target == nil then
 		return
 	end
 
-	if (e.item ~= tes3.objectType.probe) and (e.item ~= tes3.objectType.lockpick) then
+	-- e.item is tes3baseObject
+	if (e.item.objectType ~= tes3.objectType.probe) and (e.item.objectType ~= tes3.objectType.lockpick) then
 		return
 	end
 
@@ -543,56 +611,8 @@ local function onUnequipped(e)
 	logDebug(string.format("Unequipped %s", e.item.name))
 	-- event unequipped when the probe/locpick is completly used (condition = 0)
 	-- => redo the same as in ActivatedChanged
-end
-
-
--- TODO isolate the main code in a dedicated function
--- TODO use space button instead of mouse down ??
--- FIXME the menu prevents openning the menu (inventory, map) => need to destroy menu at right mouse
---- Callback function for MouseButtonDown event
--- https://mwse.github.io/MWSE/events/mouseButtonDown/
--- @param e event
-onMouseButtonDown = function(e)
-	-- event registered only when menu is displayed so prerequisites checking is reduced
-
-	-- Left button = 0
-	if (e.button ~= 0) then
-		return
-	end
-
-	logDebug(string.format("onMouseButtonDown"))
-
-	-- retrieve the block containing the items
-	-- TOD put in currentMenu
-	local menu = tes3ui.findMenu(GUIID_Menu)
-	local contentBlock = menu:findChild (GUIID_TestUI_ContentBlock)
-	local selectedBlock = contentBlock.children[currentMenu.currentIndex]
-
-	-- https://mwse.github.io/MWSE/types/tes3uiElement/?h=create+block#getpropertyobject
-	-- retrieve the tool reference
-	local item = selectedBlock:getPropertyObject(modName .. ":Item")
-	logDebug(string.format("selected item %p", item))
-
-	-- TODO need to track the right weapon as when you pass from trapped to locked, the equipped will be the probe not the initial weapon same for weaponDrawn
-	-- keep track of the already equipped weapon
-	local currentEquipped = tes3.getEquippedItem({ actor = tes3.player })
-	logDebug(string.format("currentEquipped item %p", currentEquipped))
-
-	-- destroy menu
-	destroyWindow()
-
-	-- equip it
-	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#equip
-	if config.useWorstCondition then
-		tes3.mobilePlayer:equip({ item = item, selectWorstCondition = true })
-	else
-		tes3.mobilePlayer:equip({ item = item, selectBestCondition = true })
-	end
-
-	-- store old mode
-	-- switch to ready mode
-	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#weaponready
-	tes3.mobilePlayer.weaponDrawn = true
+	-- TODO change functione name
+	manageCurrentTarget(e.item)
 end
 
 
@@ -641,10 +661,12 @@ local function onActivationTargetChanged(e)
 		return
 	end
 
-	-- TODO isolate this part in a dedicated function
-    local searchForProbe = false
+	--manageCurrentTarget(e.current)
 
-    -- check if same target => meaning it has been disarmed or unlocked
+	-- TODO isolate this part in a dedicated function
+	local searchForProbe = false
+
+	-- check if same target => meaning it has been disarmed or unlocked
 	if (currentTarget.target == e.current) then
 		-- same target so it is a door or a container
 		logDebug(string.format("onActivationTargetChanged with same target %s - %p", e.current, e.current))
@@ -655,7 +677,7 @@ local function onActivationTargetChanged(e)
         end
 
         if not tes3.getLocked({ reference = e.current }) then
-            -- final
+            -- final state: the object is disarmed and unlocked
 			resetCurrentTarget()
             restoreWeapon()
             return
@@ -708,19 +730,20 @@ local function onActivationTargetChanged(e)
     if not searchForProbe then
         -- compute min quality
 		-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel
-		minQuality = getLockpickMinQuality(tes3.getLockLevel({ reference = e.current }))
+		minQuality = getMinLockPickMultiplier(tes3.getLockLevel({ reference = e.current }))
+		logDebug(string.format("getMinLockPickMultiplier %.2f", minQuality))
     end
 
     local items = searchTools(searchForProbe, minQuality)
     currentTarget.target = e.current
 
-    -- If no tool just display a message
+    -- If no tool available just display a message
     local next = next
     if next(items) == nil then
         if searchForProbe then
             tes3.messageBox("You don't have probes")
         else
-            tes3.messageBox("You don't have lockpick or not good enough")
+            tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
         end
         return
     end
