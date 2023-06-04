@@ -1,0 +1,101 @@
+=====================================================================================
+                                    Quick Security                                     
+                                   Author: cpassuel
+                                     Version 0.10
+=====================================================================================
+
+ INDEX:
+
+ -> Requirements
+ -> About this Mod
+ -> Installation
+ -> Playing this Plugin
+ -> Known Bugs & Issues
+ -> Version History
+ -> Incompatibilities & Save Game Warnings
+ -> Credits & Usage
+
+ =====================================================================================
+ REQUIREMENTS:
+=====================================================================================
+
+ This is a MWSE-Lua mod, and requires a valid installation of MWSE 2.1 or later.
+
+    * Morrowind, Tribunal, and Bloodmoon.
+    * MGE-XE 0.10.0
+    * MWSE 2.1
+
+=====================================================================================
+ ABOUT THIS MOD:
+=====================================================================================
+
+ This mod that allows you to select lockpicks or probes from a selection list instead
+ having to go in inventory to select it and equip it manually.
+
+ https://www.nexusmods.com/morrowind/mods/52918 
+
+ WARNING If you use the mod Morrowind Mouse Control, you will need to install 
+ MMC v1.3.4+ to fix the incompatibility with Quick Security
+
+ This mod is not compatible with OpenMW.
+
+=====================================================================================
+ INSTALLATION:
+=====================================================================================
+
+ Extract the archive into your Data Files\ directory
+
+ To uninstall, delete the folder Data Files\MWSE\mods\QuickSecurity\ and
+ Data Files\QuickSecurity-metadata.toml. you can also delete the config file
+ Data Files\MWSE\config\Quick Security.json
+
+ =====================================================================================
+ PLAYING THIS PLUGIN:
+=====================================================================================
+
+ There is no esp file to activate. Simply install the MWSE 2.1 and this mod, and
+ load up an old or new game.
+
+=====================================================================================
+ KNOWN ISSUES OR BUGS:
+=====================================================================================
+ 
+ Please report any issues on the Nexus page https://www.nexusmods.com/morrowind/mods/52918
+
+=====================================================================================
+ VERSION HISTORY
+=====================================================================================
+
+ 0.10   [2023-xx-xx]: Initial release
+
+ =====================================================================================
+ INCOMPATIBILITIES & SAVED GAME WARNINGS:
+=====================================================================================
+
+ This mod does not alter the save game contents in any way, and is clean to run with
+ any other known mod. It may only conflict with mods using mouseWheel in game. If a
+ conflict is found, please report it on the Nexus page so I can fix it
+
+ https://www.nexusmods.com/morrowind/mods/52918
+
+ =====================================================================================
+ CREDITS & USAGE:
+=====================================================================================
+
+ Special thanks to NullCascade and team: for MWSE lua scripting development and docs
+ Thanks to DarkElfGuy for inspiring people to create and release mods for the yearly
+ modathon and everyone who has contributed and continues to contribute to Morrowind
+ Modding
+
+ This plugin is freely distributable and modifiable, as long as this readme
+ file accompanies it and credit is given to the original author. By downloading
+ and running this plugin, you acknowledge the following :
+
+ - You have read and understood this readme file.
+ - You acknowledge that the author of this plugin accepts no responsibility for 
+   damage to your game saves, operating system, computer, etc, 
+   when using this plugin.
+
+ Copyright 2023 cpassuel
+
+ NOTE: Please do not upload this plugin for distribution without my permission.
