@@ -1,22 +1,20 @@
 --[[
 	Quick Security
 	@author		
-	@version	0.50
-	@changelog	0.50 Initial version
+	@version	0.60
+	@changelog	0.60 Initial version
     
 	TODO add haskey
-	FIXME arme tiré lors du restoreWeapon apres le disarm/unlock=> attendre avant d'equiper ? cf. Security Enhanced ?
 	FIXME probe/lockpick unequipped => car trap activated => plus utile
 	FIXME trap actived just afer tool selection => tool not equipped fast enough => équiper l'outil et retarder la fermeture du menu
 	(attention aux multiples events onKeyDown => besoin d'un flag fermenuture en cours un faire le unregister avant ?
-	FIXME Cannot enter player menu (inventory,...) anymore (regression) voir les autres mods (quick loot ?) voir le leaveMenuMode: ne pas mettre dans destroy window
 
 --]]
 
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V0.50"
+local modVersion = "V0.60"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
@@ -40,6 +38,7 @@ local currentMenu = {
 	weaponReady = false,
 	castReady = false,
 	isEquipping = false,
+	isProbe = false,
 }
 
 -- keep information about the target (container/door trapped or locked or both)
@@ -75,8 +74,6 @@ local playerAttribute = {
 	Mod translation
 	https://mwse.github.io/MWSE/guides/mod-translations/
 	
-	Translation in not complete because I'm lazy, it's just to show how it works
-
 ]]--
 
 -- returns a table of transation, you acces a translation by its key: i18n("HELP_ATTACKED")
@@ -101,6 +98,7 @@ local modDefaultConfig = {
     computeChance = true,
 	hintKeyExists = false,
     minQuality = 10,
+	--TODO add variable (+rename)
 -- "myKeybind":{
 --     "keyCode":57,
 --     "isShiftDown":false,
@@ -339,6 +337,12 @@ local function searchTools(searchProbes, minQual)
 					toolsTable[toolName].name = toolName
 					toolsTable[toolName].tool = tool
 					toolsTable[toolName].quality = toolQuality
+					-- 
+					if searchProbes then
+						toolsTable[toolName].type = tes3.objectType.probe
+					else
+						toolsTable[toolName].type = tes3.objectType.lockpick
+					end
 					logDebug(string.format("searchTools: Adding tool %s - %p (%.2f)",toolName, tool, toolQuality))
 				end
 			end
@@ -374,34 +378,49 @@ end
 
 ---Restore the weapon and weaponDrawn state before the tool equipping
 local function restoreWeapon()
+
+
 	--TODO add a delay before equiping
 	-- check prerequisites
 	logDebug(string.format("restoreWeapon %s - %p", currentMenu.weapon, currentMenu.weapon))
-	-- https://mwse.github.io/MWSE/apis/timer/#timerstart
+
 	if currentMenu.isWeaponAStateStored then
 		logDebug(string.format("isWeaponAStateStored"))
 		-- need a timer to give time to unequip the probe/lockpick
 		-- TODO secure it by cancelling when there is already a timer started
-		-- FIXME weapon always drawn the go back to desired state
-		--tes3.mobilePlayer.weaponReady = false
-		--tes3.mobilePlayer.castReady = false
-		tes3.mobilePlayer.castReady = currentMenu.castReady
-		tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
+		-- FIXME weapon always drawn then go back to desired state
+		-- TODO use a double timer ? first weaponReady = false then equip then restore weaponReady
 
-		tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
-		timer.start({
-			duration = .5,
-			iterations = 1,
-			callback = function()
+		-- DEBUG test unequip first
+		tes3.mobilePlayer.weaponReady = false
+		tes3.mobilePlayer.castReady = false
+		local objectType
+		if currentMenu.isProbe then
+			objectType = tes3.objectType.probe
+		else
+			objectType = tes3.objectType.lockpick
+		end
+		tes3.mobilePlayer:unequip({ type = objectType})
+		--tes3.mobilePlayer.castReady = currentMenu.castReady
+		--tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
+
+
+		--tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
+		-- https://mwse.github.io/MWSE/apis/timer/#timerstart
+		-- timer.start({
+		-- 	duration = .5,
+		-- 	iterations = 1,
+		-- 	callback = function()
+				tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 				tes3.mobilePlayer.castReady = currentMenu.castReady
 				tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
-				--tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 				-- DEBUG
 				--tes3.mobilePlayer.castReady = false
 				--tes3.mobilePlayer.weaponReady = false
 				currentMenu.isWeaponAStateStored = false
-			end
-		})
+				logDebug(string.format("restoreWeapon: timer callback"))
+		-- 	end
+		-- })
 	end
 end
 
@@ -482,7 +501,7 @@ local function equipSelectedTool()
 
     local function retrieveSelectedTool()
         -- retrieve the block containing the items
-        -- TOD put and retrieve in currentMenu (same for other GUID)
+        -- TODO put and retrieve in currentMenu (same for other GUID)
         local menu = tes3ui.findMenu(GUIID_Menu)
         local contentBlock = menu:findChild (GUIID_TestUI_ContentBlock)
         local selectedBlock = contentBlock.children[currentMenu.currentIndex]
@@ -492,10 +511,19 @@ local function equipSelectedTool()
         return selectedBlock:getPropertyObject(modName .. ":Item")
     end
 
+	---TODO may cause issues when manual equipment
+	local function getIsProbe()
+		local menu = tes3ui.findMenu(GUIID_Menu)
+		local titleBlock = menu:findChild(GUIID_TestUI_TitleBlock)
+		return titleBlock:getPropertyBool(modName .. ":isProbe")
+	end
+
 	currentMenu.isEquipping = true
 
     local item = retrieveSelectedTool()
     logDebug(string.format("equipSelectedTool: selected item %s", item))
+
+	currentMenu.isProbe= getIsProbe()
 
     -- TODO how and when to reset isWeaponAStateStored
 	-- TODO need to track the right weapon as when you pass from trapped to locked, the equipped will be the probe not the initial weapon same for weaponDrawn
@@ -503,12 +531,6 @@ local function equipSelectedTool()
     if not currentMenu.isWeaponAStateStored then
 		storeWeapon()
     end
-
-	-- destroy menu
-	--destroyWindow()
-
-	-- TODO save weapon
-	-- store old mode
 
 	-- equip it
 	tes3.mobilePlayer.castReady = false
@@ -523,6 +545,7 @@ local function equipSelectedTool()
 		callback = function()
 			-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/#equip
 			logDebug(string.format("equipSelectedTool: timer callback"))
+
 			if config.useWorstCondition then
 				tes3.mobilePlayer:equip({ item = item, selectWorstCondition = true })
 			else
@@ -534,7 +557,7 @@ local function equipSelectedTool()
 end
 
 
---- Highlight the tool associated to the currentIndex
+--- Highlight the tool associated to the currentIndex in the menu
 local function highLightTool()
 	-- retrieve the block containing the items
 	local menu = tes3ui.findMenu(GUIID_Menu)
@@ -558,12 +581,17 @@ local function highLightTool()
 end
 
 
---Uupdate the menu title depending on the type of tool in parameter
+--Update the menu title depending on the type of tool in parameter
 ---@param isProbe boolean true if looking for probe false for lockpick
 local function updateTitle(isProbe)
+	local objectType
 	local menu = tes3ui.findMenu(GUIID_Menu)
 
 	local titleBlock = menu:findChild(GUIID_TestUI_TitleBlock)
+
+	-- store the type of tool
+	titleBlock:setPropertyBool(modName .. ":isProbe", isProbe)
+
 	-- only one child
 	local titleLabel = titleBlock.children[1]
 	if isProbe then
@@ -576,7 +604,7 @@ local function updateTitle(isProbe)
 end
 
 
----Create the window with the tools list from the table in paramter
+---Create the menu with the tools list from the table in paramter
 ---@param toolsTable table of tools to display (MUST NOT BE EMPTY)
 local function createWindow(toolsTable)
 	if tes3.menuMode() then
@@ -633,11 +661,12 @@ local function createWindow(toolsTable)
 		-- https://mwse.github.io/MWSE/types/tes3uiElement/?h=set+property+object#setpropertyobject
 		toolBlock:setPropertyObject(modName .. ":Item", toolsTable[v].tool)
 
-		-- create Item icon block
+		-- Item icon block
 		local icon = toolBlock:createImage({path = "icons\\" .. toolsTable[v].tool.icon})
 		icon.borderRight = 5
 
-		-- Label text
+		-- Item label text
+		--TODO add logic to display chances
 		local labelText = toolsTable[v].name
 		-- add the GUIID for later selection job
 		local label = toolBlock:createLabel({id = GUIID_TestUI_ItemBlockLabel, text = labelText})
@@ -659,7 +688,7 @@ local function createWindow(toolsTable)
 end
 
 
---- Destroy the Window if exists
+--- Destroy the menu if exists
 destroyWindow=function()
 	local menu = tes3ui.findMenu(GUIID_Menu)
 
@@ -670,7 +699,6 @@ destroyWindow=function()
 		logDebug("Destroy existing Menu")
 		-- unregister events registered only for the life of the menu 
 		-- https://mwse.github.io/MWSE/apis/event/#eventunregister
-		--event.unregister(tes3.event.mouseButtonDown, onMouseButtonDown)
 		event.unregister(tes3.event.mouseWheel, onMouseWheel)
 		event.unregister(tes3.event.uiActivated, uiActivatedCallback)
 
@@ -680,7 +708,6 @@ destroyWindow=function()
         menu:destroy()
     end
 end
-
 
 
 --[[
@@ -903,8 +930,8 @@ local function onUnequipped(e)
 		return
 	end
 
-	logDebug(string.format("Event unequipped: item %s (%p), type %d", e.item.name, e.item, e.item.objectType))
-	logDebug(string.format("currentTarget.target: %s", currentTarget.target))
+	logDebug(string.format("onUnequipped: item %s (%p), type %d", e.item.name, e.item, e.item.objectType))
+	logDebug(string.format("onUnequipped: currentTarget.target %s", currentTarget.target))
 
 	-- if currentTarget.target == nil then
 	-- 	return
@@ -919,10 +946,10 @@ local function onUnequipped(e)
 	if (e.itemData)
 	then
 		-- https://mwse.github.io/MWSE/types/tes3itemData/#condition
-		logDebug(string.format("Object unequipped: item %s, condition %d", e.item.name, e.itemData.condition))
+		logDebug(string.format("onUnequipped: item %s, condition %d", e.item.name, e.itemData.condition))
 		-- TODO check target state (trapped/locked) => need to keep the target reference
 		if (e.itemData.condition == 0) then
-			logDebug(string.format("Broken tool %s", e.item.name))
+			logDebug(string.format("onUnequipped: Broken tool %s", e.item.name))
 	
 			if (currentTarget.target) then
 				manageCurrentTarget(currentTarget.target)
