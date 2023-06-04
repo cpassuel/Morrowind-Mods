@@ -1,7 +1,7 @@
 --[[
 	Morrowind Mouse Control
 	@author		cpassuel
-	@version	V1.3.3
+	@version	V1.3.4
 	@changelog	1.0   Initial version
 				1.1   Added Draw weapon with left click
 				1.2   Added Not Ready mode spell/weapon cycling
@@ -9,8 +9,10 @@
 				1.2.2 Added Pickpocket compatibility
 				1.3   Added light support and modifier keys + mouse wheel
 				1.3.1 Added ability to disable mouse wheel cycling in third person view
-				1.3.2 Small fix : now can switch mode with QuickLoot/Pickpocket mod activated
-				1.3.3 Small fix : activate mod after character creation (to avoid punching Jiub)
+				1.3.2 Small fix: now can switch mode with QuickLoot/Pickpocket mod activated
+				1.3.3 Small fix: activate mod after character creation (to avoid punching Jiub)
+				1.3.4 Small fixes: Add upcoming Quick Security compatibility and misc code clean up
+
 ]]--
 
 -- Cycle through Weapon ready / no weapon no spell / Spell ready
@@ -24,10 +26,10 @@
 
 -- https://unendli.ch/posts/2016-07-22-enumerations-in-lua.html
 -- playerStates = {WeaponReady = 1, SpellReady = 2, NotReady = 3,}
-modActions = { none = 0, CycleSpell = 1, CycleWeapon = 2, CycleLight = 3,}
+local modActions = { none = 0, CycleSpell = 1, CycleWeapon = 2, CycleLight = 3, }
 
 local modName = "Morrowind Mouse Control"
-local modVersion = "V1.3.3"
+local modVersion = "V1.3.4"
 local modConfig = "MorrowindMouseControl"
 local modAuthor= "cpassuel"
 
@@ -74,7 +76,8 @@ local activatemod = false	-- to prevent switching modes before character creatio
 	-- Mods using mouse wheel
 	Pickpocket https://www.nexusmods.com/morrowind/mods/47581 ADDED
 	QuickLoot https://www.nexusmods.com/morrowind/mods/46283 ADDED
-	
+	Quick Security https://www.nexusmods.com/morrowind/mods/52918 ADDED
+
 	-- Mods not using custom menu
 	inom - Inventory mouse wheel https://www.nexusmods.com/morrowind/mods/46847 NO NEED
 	
@@ -85,6 +88,7 @@ local activatemod = false	-- to prevent switching modes before character creatio
 ]]
 local ignoredUIs = {
 	["QuickLoot:Menu"] = true,
+	["Quick Security:Menu"] = true,
 	["Pickpocket:Menu"] = true
 }
 
@@ -98,7 +102,7 @@ local modDefaultConfig = {
 	modEnabled = true,
 	-- Not Ready mode setting
 	leftClickDrawWeapon = false,
-	NotReadyWheelAction = 0,
+	NotReadyWheelAction = mouseWheelNotReadyOptions[1]["value"],
 	-- unequipLightOnWeapon = false,
 	-- MouseWheel enable/disable
 	spellReadyMouseWheel = true,
@@ -158,7 +162,7 @@ end
 
 
 -- when no spell equiped, equip the first one or first power
-function equipFirstSpell()
+local function equipFirstSpell()
 	if tes3.mobilePlayer.currentSpell == nil then
 		-- send controlTypeNextSpell or controlTypePrevSpell after checking if keyboard mapped
 		if keyBindingArray[controlTypeNextSpell] >= 0 then
@@ -170,8 +174,8 @@ function equipFirstSpell()
 end
 
 
--- Cycie spells according to the direction
--- dir = direction 
+---Cycie spells according to the direction
+---@param dir number direction of cycling (positive => Next, negative => Previous)
 local function CycleSpell(dir)
 	if (dir >= config.mwThreshold) then
 		if keyBindingArray[controlTypeNextSpell] >= 0 then
@@ -185,8 +189,8 @@ local function CycleSpell(dir)
 end
 
 
--- Cycie weapons according to the direction
--- dir = direction 
+---Cycie weapons according to the direction
+---@param dir number direction of cycling (positive => Next, negative => Previous)
 local function CycleWeapon(dir)
 	if (dir >= config.mwThreshold) then
 		if keyBindingArray[controlTypeNextWeapon] >= 0 then
@@ -244,7 +248,7 @@ local function swapForLight()
         if (lastWeapon) then
             mwscript.equip{ reference = tes3.player, item = lastWeapon }
         end
-    
+
         -- If we had a ranged weapon equipped before, re-equip it.
         if (lastRanged) then
             mwscript.equip{ reference = tes3.player, item = lastRanged }
@@ -259,19 +263,19 @@ local function swapForLight()
     	lastShield = nil
 		lastWeapon = nil
 		lastRanged = nil
-    
+
         -- Store the currently equipped shield, if any.
         local shieldStack = tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.armor, slot = tes3.armorSlot.shield })
         if (shieldStack) then
             lastShield = shieldStack.object
         end
-    
+
         -- Store the currently equipped 2H weapon, if any.
         local weaponStack = tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.weapon})
         if (weaponStack and weaponStack.object.isTwoHanded) then
             lastWeapon = weaponStack.object
         end
-    
+
         -- Store the currently equipped ranged weapon, if any.
         local rangedStack = tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.weapon})
         if (rangedStack and rangedStack.object.isRanged) then
@@ -295,12 +299,12 @@ end
 -- https://mwse.readthedocs.io/en/latest/lua/event/mouseWheel.html
 local function onMouseWheel(e)
 	local action = -1	-- no modifier key pressed
-	
+
 	-- prevent mode switching before character creation
-	if not activatemod then	
+	if not activatemod then
 		return
 	end
-	
+
 	-- 
 	if not config.modEnabled or not isKeyboardOnly then
 		return
@@ -315,7 +319,7 @@ local function onMouseWheel(e)
 	if tes3.is3rdPerson() and config.disableMouseWheel3rdPerson then
 		return
 	end
-	
+
 	-- get action from config if modifier key pressed - priority (CTRL, Windows, Alt)
 	if e.isControlDown then
 		action = config.mwCtrlAction
@@ -324,7 +328,7 @@ local function onMouseWheel(e)
 	elseif e.isAltDown then
 		action = config.mwAltAction
 	end
-	
+
 	-- determine action to make depending on player mode and config
 	if action == -1 or action == 4 then
 		-- no modifier key or same action as without modifier => depending on player status
@@ -354,7 +358,7 @@ end
 local function onMouseButtonDown(e)
 
 	-- prevent mode switching before character creation
-	if not activatemod then	
+	if not activatemod then
 		return
 	end
 
@@ -369,11 +373,11 @@ local function onMouseButtonDown(e)
 
 	if (e.button == 2) then
 		-- mouse wheel button
-		
+
 		-- equip spell/power if none equiped
 		equipFirstSpell()
 		-- beware if no spell/scroll => cycle to nothing ready
-		
+
 		-- Cycle through Weapon ready / no weapon no spell / Spell ready
 		-- https://mwse.readthedocs.io/en/latest/lua/type/tes3mobilePlayer/weaponReady.html
 		-- https://mwse.readthedocs.io/en/latest/lua/type/tes3mobilePlayer/castReady.html
@@ -382,13 +386,13 @@ local function onMouseButtonDown(e)
 			tes3.mobilePlayer.weaponReady = false
 			return
 		end
-		
+
 		if tes3.mobilePlayer.spellReadied then
 			-- Spell ready to weapon ready
 			tes3.mobilePlayer.weaponReady = true
 			return
 		end
-		
+
 		-- no spell no weapon to spell ready
 		tes3.mobilePlayer.castReady = true
 	elseif (e.button == 0) and config.leftClickDrawWeapon then
@@ -434,10 +438,10 @@ end
 
 local function initialize()
 	isKeyboardOnly = getKeyBinding()
-	event.register("mouseWheel", onMouseWheel)
-	event.register("mouseButtonDown", onMouseButtonDown)
-	event.register("menuExit", onMenuExit)
-	event.register("loaded", onLoaded)
+	event.register(tes3.event.mouseWheel, onMouseWheel)
+	event.register(tes3.event.mouseButtonDown, onMouseButtonDown)
+	event.register(tes3.event.menuExit, onMenuExit)
+	event.register(tes3.event.loaded, onLoaded)
 	mwse.log(modName .. " initialized")
 	if not isKeyboardOnly then
 		tes3.messageBox(modName .. " - some prev/next spell/weapon controls not mapped to keyboard. It will affect the mod behaviour")
@@ -454,7 +458,7 @@ local function createtableVar(id)
 	return mwse.mcm.createTableVariable{
 		id = id,
 		table = config
-	}  
+	}
 end
 
 
@@ -482,16 +486,16 @@ end
 local function registerModConfig()
     local template = mwse.mcm.createTemplate(modName)
 	template:saveOnClose(modConfig, config)
-	
+
     local page = template:createSideBarPage{
 		label = "Sidebar Page",
-		description = modName .. " " .. modVersion .. 
+		description = modName .. " " .. modVersion ..
 		"\n\nThis mod allows you to replace all keyboard commands for Weapon Ready/Spell Ready with mouse click and to select Weapons/Spells/Light with mouse wheel." ..
 		"\n\nYou can switch between Weapon Ready / Not Ready / Spell Ready modes with the Middle mouse button. In Weapon Ready mode you will cycle weapons with the mouse wheel and in Spell Ready mode you will cycle spells/powers." ..
 		"\n\nIn Not Ready mode you can choose if you want to cycle spells or weapons or turn light On and Off" ..
 		"\n\nModifier keys (Ctrl, Alt, Windows) + mouse wheel are now supported so you can define a specific action when using mouse wheel while holding down a modifier key"
 	}
-	
+
     local catMain = page:createCategory(modName)
 	catMain:createYesNoButton {
 		label = "Enable " .. modName,
@@ -524,13 +528,13 @@ local function registerModConfig()
 		variable = createtableVar("disableMouseWheel3rdPerson"),
 		defaultSetting = false,
 	}
-	
+
 	--
 	local catModifiers = catSettings:createCategory("Modifier keys + Mouse Wheel settings")
 	catModifiers:createDropdown {
 		label = "Action for CTRL + MouseWheel",
 		description = "Select the wanted action when using mouse wheel while holding CTRL key down",
-		options = modifierKeyOptions,	  
+		options = modifierKeyOptions,
 		variable = createtableVar("mwCtrlAction"),
 		defaultSetting = 0,
 	}
@@ -538,19 +542,19 @@ local function registerModConfig()
 	catModifiers:createDropdown {
 		label = "Action for ALT + MouseWheel",
 		description = "Select the wanted action when using mouse wheel while holding ALT key down",
-		options = modifierKeyOptions,	  
+		options = modifierKeyOptions,
 		variable = createtableVar("mwAltAction"),
 		defaultSetting = 0,
 	}
-	
+
 	catModifiers:createDropdown {
 		label = "Action for Windows + MouseWheel",
 		description = "Select the wanted action when using mouse wheel while holding Windows key down",
-		options = modifierKeyOptions,	  
+		options = modifierKeyOptions,
 		variable = createtableVar("mwWindowsAction"),
 		defaultSetting = 0,
 	}
-	
+
 	--
 	-- local catExtraButtons = catSettings:createCategory("Extra Mouse Buttons (Experimental)")
 	-- catExtraButtons:createDropdown {
@@ -560,7 +564,7 @@ local function registerModConfig()
 		-- variable = createtableVar("mouseButton4Action"),
 		-- defaultSetting = 0,
 	-- }
-	
+
 	-- catExtraButtons:createDropdown {
 		-- label = "Action for Mouse Button 5",
 		-- description = "Select action for Mouse Button #5",
@@ -568,8 +572,8 @@ local function registerModConfig()
 		-- variable = createtableVar("mouseButton5Action"),
 		-- defaultSetting = 0,
 	-- }
-	
+
 	--
 	mwse.mcm.register(template)
 end
-event.register("modConfigReady", registerModConfig)
+event.register(tes3.event.modConfigReady, registerModConfig)
