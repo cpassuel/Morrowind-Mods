@@ -1,0 +1,22 @@
+# Holds metadata about the mod
+# https://mwse.github.io/MWSE/guides/metadata/
+
+[package]
+name = "Morrowind Mouse Control"
+description = "This mod allows to switch between Weapon Ready / nothing ready / Spell Ready modes and to cycle through weapons, spells/powers or torch with the mouse. No more need to use the keyboard."
+homepage = "https://www.nexusmods.com/morrowind/mods/48254"
+repository = "https://github.com/cpassuel/Morrowind-Mods"
+authors = ["Thinuviel"]
+version = "1.3.4"
+
+# MWSE specific information about this mod
+[tools.mwse]
+lua-mod = "Morrowind Mouse Control"
+
+# adapt to your minimal version of MWSE needed
+[dependencies.mwse]
+buildnumber = 2907
+
+# in case your mod needs a minimal version of mge-xe
+[dependencies.mge-xe]
+version = ">=0.10.0"
