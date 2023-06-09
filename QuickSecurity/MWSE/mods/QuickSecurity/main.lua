@@ -90,21 +90,19 @@ local i18n = mwse.loadTranslations(modFolder)
 
 
 -- Define mod config default values
--- TODO Add key bind variable
 local modDefaultConfig = {
 	modEnabled = true,
 	--
 	useWorstCondition = true,	-- true => use worst condition tool (already used), false best condution (maybe put a 3 states value: worst, don't care, best)
     computeChance = true,
 	hintKeyExists = false,
-    minQuality = 10,
 	--TODO add variable (+rename)
--- "myKeybind":{
---     "keyCode":57,
---     "isShiftDown":false,
---     "isAltDown":false,
---     "isControlDown":false
---   },
+	-- myKeybind = {
+	--     keyCode = tes3.scanCode.space,
+	--     isShiftDown = false,
+	--     isAltDown = false,
+	--     isControlDown =false
+	-- },
 	--
 	debugMode = true,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
 }
@@ -754,6 +752,36 @@ end
 ---Manage action on a non nil target
 ---@param target any activated target
 local function manageCurrentTarget(target)
+	-- TODO returns key instead ?
+	---Check if a key exists for this door/container
+	---@param reference any door/container to be checked
+	---@return boolean true is there is a key to open the door/container
+	local function objectHasKey(reference)
+		if (reference == nil) or (reference.lockNode == nil) then
+			return false
+		else
+			return reference.lockNode.key ~= nil
+		end
+	end
+
+
+	---Check if the player has the k to unlock the object
+	---@param reference any target (door/container)
+	---@return boolean true if the player has the key to unlock the object in his inventory
+	local function playerHasKey(reference)
+		if objectHasKey(reference) then
+			logDebug(string.format("Target %s has key %s", reference, reference.lockNode.key))
+
+			return tes3.getItemCount({
+				reference = tes3.player,
+				item = reference.lockNode.key
+			}) > 0
+		else
+			return false
+		end
+	end
+
+
 	logDebug(string.format("manageCurrentTarget"))
 
 	local searchForProbe = false
@@ -761,6 +789,11 @@ local function manageCurrentTarget(target)
 	-- currently equiping tool no need to do something
 	if currentMenu.isEquipping then
 		return
+	end
+
+	-- DEBUG haskey
+	if playerHasKey(target) then
+		tes3.messageBox(string.format("DEBUG Player has the key %s to unlock %s", target.lockNode.key, target))
 	end
 
 	-- TODO Refactor the 3 branches of the test
@@ -793,6 +826,14 @@ local function manageCurrentTarget(target)
 			else
 				-- locked
 				logError(string.format("Same target but still locked %s - %p", target, target))
+			
+				if (target.lockNode.key ~= nil) then
+					tes3.messageBox(string.format("DEBUG There is key for this object: %s", target.lockNode.key))
+					-- check if the player has the key (cf. Security Enhanced). If so do not equip lockpick (option in config ?)
+
+					-- qu'est ce qui arrive si le joueur a la clé mais que le lockpick est équipé ?
+				end
+
 				-- TODO test lockpick equipped
 				if  tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
 					logDebug(string.format("manageCurrentTarget: lockpick already equipped"))
@@ -823,6 +864,14 @@ local function manageCurrentTarget(target)
 		else
 			-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked (returns true if locked)
 			if tes3.getLocked({ reference = target }) then
+
+				if (target.lockNode.key ~= nil) then
+					tes3.messageBox(string.format("DEBUG There is key for this object: %s", target.lockNode.key))
+					-- check if the player has the key (cf. Security Enhanced). If so do not equip lockpick (option in config ?)
+
+					-- qu'est ce qui arrive si le joueur a la clé mais que le lockpick est équipé ?
+				end
+
 				-- check for an equipped lockpick
 				if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
 					logDebug(string.format("manageCurrentTarget - lockpick already equipped"))
@@ -861,8 +910,13 @@ local function manageCurrentTarget(target)
 		if searchForProbe then
 			tes3.messageBox("You don't have probes")
 		else
-			tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
+			if config.hintKeyExists and objectHasKey(target) then
+				tes3.messageBox("You don't have good enough lockpicks to unlock but a key exists")
+			else
+				tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
+			end
 		end
+		-- nothing to do
 		return
 	end
 
@@ -1248,17 +1302,6 @@ local function registerModConfig()
 			isControlDown = false,
 		},
 		variable = createtableVar("myKeybind") --TODO rename variable
-	}
-
-    -- For DEBUG only
-	catSettings:createSlider {
-		label = "Quality slider",
-		description = "DEBUG Changes minimal quality of the lockpick * 10",
-		min = 0,
-		max = 30,
-		step = 1,
-		jump = 1,
-		variable = createtableVar("minQuality")
 	}
 	mwse.mcm.register(template)
 end
