@@ -1,14 +1,14 @@
 --[[
 	Quick Security
 	@author		
-	@version	0.60
-	@changelog	0.60 Initial version
+	@version	0.65
+	@changelog	0.50 Initial version
     
-	TODO add haskey
 	FIXME probe/lockpick unequipped => car trap activated => plus utile
 	FIXME trap actived just afer tool selection => tool not equipped fast enough => équiper l'outil et retarder la fermeture du menu
 	(attention aux multiples events onKeyDown => besoin d'un flag fermenuture en cours un faire le unregister avant ?
-
+	TODO check behaviour with Equip Script fix in MCP
+	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped
 --]]
 
 -- mod informations
@@ -53,13 +53,16 @@ local currentTarget = {
 
 -- TODO rename in playerInformation
 local playerAttribute = {
-	agility=0,
-	luck=0,
-	security=0,
-	--
-	currentFatigue=0,
-	maxFatigue=0,
+	agility = 0,
+	luck = 0,
+	security = 0,
+	-- security ratio
+	securityRatio = 0,
+	-- fatigue status
+	currentFatigue = 0,
+	maxFatigue = 0,
 	fatigueTerm = 0,
+	fullFatigueTerm = 0,
 	-- static GMST values 
 	gmstOk=false,
 	fTrapCostMult = 0,
@@ -94,15 +97,15 @@ local modDefaultConfig = {
 	modEnabled = true,
 	--
 	useWorstCondition = true,	-- true => use worst condition tool (already used), false best condution (maybe put a 3 states value: worst, don't care, best)
-    computeChance = true,
+    diplayChance = true,
+	selectUsableFullFatigue = false,	-- select also tools *usable* only with full fatigue (or fatigue higher than current fatigue)
 	hintKeyExists = false,
-	--TODO add variable (+rename)
-	-- myKeybind = {
-	--     keyCode = tes3.scanCode.space,
-	--     isShiftDown = false,
-	--     isAltDown = false,
-	--     isControlDown =false
-	-- },
+	selectionKey = {
+	    keyCode = tes3.scanCode.space,
+	    isShiftDown = false,
+	    isAltDown = false,
+	    isControlDown =false
+	},
 	--
 	debugMode = true,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
 }
@@ -227,41 +230,16 @@ local function getPlayerStats()
 
 	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/?h=mobile+player#getfatigueterm
 	playerAttribute.fatigueTerm = playerAttribute.fFatigueBase - playerAttribute.fFatigueMult * (1 - playerAttribute.currentFatigue / playerAttribute.maxFatigue)
-	-- at full fatigue, playerAttribute.fatigueTerm = playerAttribute.fFatigueBase
-	-- TODO compute 0.2 * pcAgility + 0.1 * pcLuck + securitySkill
-end
-
-
---- Compute the minimal lockpick quality for the given locklevel at current fatigue and at max fatigue
----@param locklevel number level of the lock to unlock
----@return number minimal lockpick quality for the given locklevel
--- chance to successfully unlock
--- ((Security + (Agility/5) + (Luck/10)) * Lockpick multiplier * (0.75 + 0.5 * Current Fatigue/Maximum Fatigue) - Lock Level)%
--- 2 partie ind�pendantes Security + (Agility/5) + (Luck/10)) et (0.75 + 0.5 * Current Fatigue/Maximum Fatigue)
--- formule qui renvoie 2 r�sultats % avec current fatigue et % avec full fatigue
--- input Lockpick multiplier (from inventory) et Lock Level
---TODO rewrite formulas
---TODO delete
--- https://riptutorial.com/lua/example/4082/multiple-results
-local function getMinLockPickMultiplier(locklevel)
-	local lpQualCurFatigue, lpQualMaxFatigue
-
-	getPlayerStats()
-
-	-- -- lpmulmintcurrent = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5 * fatcurrent/fatmax)
-	lpQualCurFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5 * playerAttribute.currentFatigue/playerAttribute.maxFatigue))
-	-- -- lpmultminfull = locklevel / (security + agility/5 + luck/10) / (0.75 + 0.5)
-	-- lpQualMaxFatigue = locklevel / ((playerAttribute.security + playerAttribute.agility/5 + playerAttribute.luck/10) * (0.75 + 0.5))
-
-	-- return lpQualCurFatigue, lpQualMaxFatigue
-	return lpQualCurFatigue
+	playerAttribute.fullFatigueTerm = playerAttribute.fFatigueBase
+	-- compute *security ratio* used in chance computation
+	playerAttribute.securityRatio = (playerAttribute.agility/5 + playerAttribute.luck/10 + playerAttribute.security)
 end
 
 
 ---Compute the chance to unlock a door/container given the toolQuality and the locklevel in parameter
 ---@param toolQuality number quality of the lockpick
 ---@param locklevel number level of the lock
----@return number chance to unlock (can be negative)
+---@return number curChance, number fullChance returns the chance to unlock the object with current and full fatigue (can be negative)
 local function getUnlockChance(toolQuality, locklevel)
 	-- Lockpick
 	-- x = 0.2 * pcAgility + 0.1 * pcLuck + securitySkill
@@ -270,17 +248,18 @@ local function getUnlockChance(toolQuality, locklevel)
 
 	getPlayerStats()
 
-	local chance = (playerAttribute.agility/5 + playerAttribute.luck/10 + playerAttribute.security) * toolQuality * playerAttribute.fatigueTerm + playerAttribute.fPickLockMult * locklevel
-	logDebug(string.format("Unlock chance %.2f", chance))
-	--TODO add a max(0, chance) ?
-	return chance
+	local curChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fatigueTerm + playerAttribute.fPickLockMult * locklevel
+	local fullChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fullFatigueTerm + playerAttribute.fPickLockMult * locklevel
+	logDebug(string.format("Unlock chance: %.2f - %.2f", curChance, fullChance))
+	-- add a max(0, chance) ?
+	return curChance, fullChance
 end
 
 
 ---Compute the chance to disarm a door/container given the probe quality and the magickaCost in parameter
 ---@param toolQuality number quality of the probe
 ---@param magickaCost number *level* of the trap
----@return number chance to disarm the trap
+---@return number curChance, number fullChance returns the chance to disarm the trap with current and full fatigue
 local function getDisarmChance(toolQuality, magickaCost)
 	-- Disarm
 	-- x = 0.2 * pcAgility + 0.1 * pcLuck + securitySkill
@@ -289,69 +268,84 @@ local function getDisarmChance(toolQuality, magickaCost)
 
 	getPlayerStats()
 
-	local chance = ((playerAttribute.agility/5 + playerAttribute.luck/10 + playerAttribute.security) + (playerAttribute.fTrapCostMult * magickaCost)) * toolQuality * playerAttribute.fatigueTerm
-	logDebug(string.format("Disarm chance %.2f", chance))
-	return chance
+	local curChance = (playerAttribute.securityRatio + (playerAttribute.fTrapCostMult * magickaCost)) * toolQuality * playerAttribute.fatigueTerm
+	local fullChance = (playerAttribute.securityRatio + (playerAttribute.fTrapCostMult * magickaCost)) * toolQuality * playerAttribute.fullFatigueTerm
+	logDebug(string.format("Disarm chance: %.2f - %.2f", curChance, fullChance))
+	return curChance, fullChance
 end
 
 
--- TODO implement current & maxFatigue quality
--- TODO use a different color for lockpicks needing full fatigue ?
--- TODO compute chance and add in toolsTable[toolName] => need level of trap/lock
---- Search in the inventory for lockpicks or probes with a minimal quality
----@param searchProbes boolean true to search probes, false to search lockpicks
----@param minQual number minimal quality of the tool requested
+---Search in the inventory for lockpicks or probes with a non negative chance to unlock
+---@param searchForProbes boolean true to search for probes, false to search for lockpicks
+---@param level number level of the trap (magickaCost) or of the lock
 ---@return table unsorted table of tables with one entry par tool with quality information, can be nil if no tool found
-local function searchTools(searchProbes, minQual)
-	local inventory = tes3.player.object.inventory
+local function searchTools(searchForProbes, level)
 
-	-- TODO add function to compute chance (current and max), so minQual not needed, pass level instead
-
-	local toolsTable = {}
-	local objectTypeToSearch
-
-	if searchProbes then
-		objectTypeToSearch = tes3.objectType.probe
-	else
-		objectTypeToSearch = tes3.objectType.lockpick
-	end
-
-	-- no need to search for tool condition as it will be defined when equipping
-	--TODO try to count objects, when used and not used, sereval entry in inventory or only one ? 
-	for _, stack in pairs(inventory) do
-		if stack.object.objectType == objectTypeToSearch then
-			local tool = stack.object	-- tes3lockpick or tes3probe
-			local toolName = tool.name
-			local toolQuality = tool.quality
-
-			logDebug(string.format("searchTools: Found probe %s - %p (%.2f)",toolName, tool, toolQuality))
-
-			-- check min quality
-			-- TOOD check chance > 0
-			if toolQuality >= minQual then
-				-- add only one *type* of tool
-				if (toolsTable[toolName] == nil) then
-					toolsTable[toolName]={}
-					toolsTable[toolName].name = toolName
-					toolsTable[toolName].tool = tool
-					toolsTable[toolName].quality = toolQuality
-					-- 
-					if searchProbes then
-						toolsTable[toolName].type = tes3.objectType.probe
-					else
-						toolsTable[toolName].type = tes3.objectType.lockpick
-					end
-					logDebug(string.format("searchTools: Adding tool %s - %p (%.2f)",toolName, tool, toolQuality))
-				end
-			end
+	---Check if the object is of the type searched (probe or lockpick)
+	---@param object any object found in inventory
+	---@return boolean returns true if it's a searched object type
+	local function isSearchedTool(object)
+		if searchForProbes then
+			return (object.objectType == tes3.objectType.probe)
+		else
+			return (object.objectType == tes3.objectType.lockpick)
 		end
 	end
 
+	---Returns the chance to unlock/disarm from the quality of the object
+	---@param quality number quality of the object
+	---@return number curChance, number fullChance returns chance at current and full fatigue
+	local function computeChange(quality)
+		if searchForProbes then
+			return getDisarmChance(quality, level)
+		else
+			return getUnlockChance(quality, level)
+		end
+	end
+
+	local inventory = tes3.player.object.inventory
+	local toolsTable = {}
+	for _, stack in pairs(inventory) do
+		if not isSearchedTool(stack.object) then
+			goto continue
+		end
+
+		local tool = stack.object	-- tes3lockpick or tes3probe
+		local toolName = tool.name
+
+		-- compute chance current, max fatique
+		local curChance, fullChance = computeChange(tool.quality)
+		-- option to select object usable at full fatigue
+		if config.selectUsableFullFatigue then
+			if fullChance <=0 then goto continue end
+		else
+			if curChance <= 0 then goto continue end
+		end
+
+		if (toolsTable[toolName] == nil) then
+			toolsTable[toolName]={}
+			toolsTable[toolName].name = toolName
+			toolsTable[toolName].tool = tool
+			toolsTable[toolName].curChance = curChance
+			toolsTable[toolName].fullChance = fullChance
+
+			if searchForProbes then
+				toolsTable[toolName].type = tes3.objectType.probe
+			else
+				toolsTable[toolName].type = tes3.objectType.lockpick
+			end
+
+			logDebug(string.format("searchToolsBis: Adding tool %s - %p (%.2f - %.2f)",toolName, tool, curChance, fullChance))
+		end
+
+		--MUST be at the end of for loop: No continue in Lua :(
+	    ::continue::
+	end
 	return toolsTable
 end
 
 
----comment
+---Store player weapon information and status
 local function storeWeapon()
 	-- TODO test on isWeaponAStateStored ?
 	if  currentMenu.isWeaponAStateStored then
@@ -376,8 +370,6 @@ end
 
 ---Restore the weapon and weaponDrawn state before the tool equipping
 local function restoreWeapon()
-
-
 	--TODO add a delay before equiping
 	-- check prerequisites
 	logDebug(string.format("restoreWeapon %s - %p", currentMenu.weapon, currentMenu.weapon))
@@ -565,12 +557,18 @@ local function highLightTool()
 
 	-- iterate on blocks
 	for i, block in pairs(children) do
+		local label = block:findChild(GUIID_TestUI_ItemBlockLabel)
+		local curChance = label:getPropertyFloat(modName .. ":curChance")
+
 		if (i == currentMenu.currentIndex) then
-			local label = block:findChild(GUIID_TestUI_ItemBlockLabel)
 			label.color = tes3ui.getPalette("active_color")
 		else
-			local label = block:findChild(GUIID_TestUI_ItemBlockLabel)
-			label.color = tes3ui.getPalette("normal_color")
+			if curChance <= 0 then
+				-- for the case to display usable at full fatique tool
+				label.color = tes3ui.getPalette("negative_color")
+			else
+				label.color = tes3ui.getPalette("normal_color")
+			end
 		end
 	end
 
@@ -646,7 +644,7 @@ local function createWindow(toolsTable)
 	toolsListBlock.flowDirection = "top_to_bottom"
 
 	local itemsCount = 0
-    local sortedKeys = getKeysSortedByValue(toolsTable, function(a, b) return a.quality < b.quality end)
+    local sortedKeys = getKeysSortedByValue(toolsTable, function(a, b) return a.curChance < b.curChance end)
     for _,v in pairs(sortedKeys) do
 		-- Our container block for this item.
 		local toolBlock = toolsListBlock:createBlock({ id = GUIID_TestUI_ItemBlock })
@@ -664,10 +662,18 @@ local function createWindow(toolsTable)
 		icon.borderRight = 5
 
 		-- Item label text
-		--TODO add logic to display chances
 		local labelText = toolsTable[v].name
+		if config.diplayChance then
+			labelText = labelText .. string.format(" (%.f%%)", toolsTable[v].curChance)
+			--TODO how to diplay cur change if negative
+			--labelText = labelText .. string.format(" (%.f%% - %.f%%)", toolsTable[v].curChance, toolsTable[v].fullChance)
+		end
+
 		-- add the GUIID for later selection job
 		local label = toolBlock:createLabel({id = GUIID_TestUI_ItemBlockLabel, text = labelText})
+		-- add curChance property to the label for selection job
+		label:setPropertyFloat(modName .. ":curChance", toolsTable[v].curChance)
+
 		label.absolutePosAlignY = 0.5
 
 		itemsCount = itemsCount + 1
@@ -752,6 +758,7 @@ end
 ---Manage action on a non nil target
 ---@param target any activated target
 local function manageCurrentTarget(target)
+	--TODO remove parameter as it is visible in the scope
 	-- TODO returns key instead ?
 	---Check if a key exists for this door/container
 	---@param reference any door/container to be checked
@@ -765,6 +772,7 @@ local function manageCurrentTarget(target)
 	end
 
 
+	--TODO remove parameter as it is visible in the scope
 	---Check if the player has the k to unlock the object
 	---@param reference any target (door/container)
 	---@return boolean true if the player has the key to unlock the object in his inventory
@@ -781,17 +789,16 @@ local function manageCurrentTarget(target)
 		end
 	end
 
-
 	logDebug(string.format("manageCurrentTarget"))
-
-	local searchForProbe = false
 
 	-- currently equiping tool no need to do something
 	if currentMenu.isEquipping then
 		return
 	end
 
-	-- DEBUG haskey
+	local searchForProbe = false
+
+	-- DEBUG haskey - to delete at end
 	if playerHasKey(target) then
 		tes3.messageBox(string.format("DEBUG Player has the key %s to unlock %s", target.lockNode.key, target))
 	end
@@ -826,7 +833,7 @@ local function manageCurrentTarget(target)
 			else
 				-- locked
 				logError(string.format("Same target but still locked %s - %p", target, target))
-			
+
 				if (target.lockNode.key ~= nil) then
 					tes3.messageBox(string.format("DEBUG There is key for this object: %s", target.lockNode.key))
 					-- check if the player has the key (cf. Security Enhanced). If so do not equip lockpick (option in config ?)
@@ -891,17 +898,13 @@ local function manageCurrentTarget(target)
 	-- trapped or locked and no related tool equipped
 	currentTarget.target = target
 
-	local minQuality = 0
-	if not searchForProbe then
-		-- compute min quality
-		-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel
-		minQuality = getMinLockPickMultiplier(tes3.getLockLevel({ reference = target }))
-		logDebug(string.format("getMinLockPickMultiplier %.2f", minQuality))
-
-		getUnlockChance(1.1, tes3.getLockLevel({ reference = target }))
+	local items
+	if searchForProbe then
+		items = searchTools(searchForProbe, target.lockNode.trap.magickaCost)
+	else
+		items = searchTools(searchForProbe, tes3.getLockLevel({ reference = target }))
 	end
 
-	local items = searchTools(searchForProbe, minQuality)
 	currentTarget.target = target
 
 	-- If no tool available just display a message
@@ -921,7 +924,6 @@ local function manageCurrentTarget(target)
 	end
 
 	-- TODO check if destroy menu is needed
-	-- TODO remove dead code
 	if currentTarget.target == nil then
 		resetCurrentTarget()	-- may be not necessary
 		destroyWindow()
@@ -1024,14 +1026,10 @@ local function onUnequipped(e)
 end
 
 
--- FIXME pb avec MMC => need an update on MMC
---- Update the selected tool in the menu depending on mousewheel direction
--- @param e mousewheel event
+---Update the selected tool in the menu depending on mousewheel direction
+---@param e any mousewheel event
 onMouseWheel = function(e)
 	-- event registered only when menu is displayed so prerequisites checking is reduced
-
-	-- TODO check other prerequisites ???
-	--logDebug(string.format("onMouseWheel"))
 
 	-- Change the selected tool depending on mousewheel direction (delta)
 	if e.delta > 0 then
@@ -1090,105 +1088,6 @@ local function onActivationTargetChanged(e)
 	-- TODO test new activated object (door/container)
 
 	manageCurrentTarget(e.current)
-
-	-- TODO isolate this part in a dedicated function
-	-- local searchForProbe = false
-
-	-- -- check if same target => meaning it has been disarmed or unlocked
-	-- if (currentTarget.target == e.current) then
-	-- 	-- same target so it is a door or a container
-	-- 	logDebug(string.format("onActivationTargetChanged with same target %s - %p", e.current, e.current))
-
-    --     if tes3.getTrap({ reference = e.current }) then
-	-- 		logError(string.format("Same target but still trapped %s - %p", e.current, e.current))
-    --         return
-    --     end
-
-    --     if not tes3.getLocked({ reference = e.current }) then
-    --         -- final state: the object is disarmed and unlocked
-	-- 		resetCurrentTarget()
-    --         restoreWeapon()
-    --         return
-    --     else
-    --         -- locked
-	-- 		logError(string.format("Same target but still locked %s - %p", e.current, e.current))
-    --         currentTarget.isTrapped = false
-    --         currentTarget.isLocked =true
-    --         searchForProbe = false
-    --     end
-	-- else
-	-- 	-- New target, check if it's a door / container
-	-- 	if (e.current.object.objectType ~= tes3.objectType.container) and (e.current.object.objectType ~= tes3.objectType.door) then
-	-- 		resetCurrentTarget()
-    --         return
-    --     end
-
-	-- 	-- https://mwse.github.io/MWSE/apis/tes3/#tes3gettrap (returns nil if not trapped)
-    --     if tes3.getTrap({ reference = e.current }) then
-    --         -- test if probe equipped
-    --         -- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
-    --         if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.probe }) then
-    --             logDebug(string.format("Probe already equipped"))
-    --             return
-    --         end
-    --         currentTarget.isTrapped = true
-    --         searchForProbe = true
-    --     else
-	-- 		-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked (returns true if locked)
-    --         if tes3.getLocked({ reference = e.current }) then
-    --             -- check for an equipped lockpick
-    --             if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
-    --                 logDebug(string.format("lockpick already equipped"))
-    --                 return
-    --             end
-
-    --             currentTarget.isLocked = true
-    --             searchForProbe = false
-    --         else
-    --             -- not locked and not trapped => exit
-	-- 			resetCurrentTarget()
-    --             return
-    --         end
-    --     end
-    -- end
-
-    -- -- trapped or locked and no related tool equipped
-
-    -- local minQuality = 0
-    -- if not searchForProbe then
-    --     -- compute min quality
-	-- 	-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocklevel
-	-- 	minQuality = getMinLockPickMultiplier(tes3.getLockLevel({ reference = e.current }))
-	-- 	logDebug(string.format("getMinLockPickMultiplier %.2f", minQuality))
-    -- end
-
-    -- local items = searchTools(searchForProbe, minQuality)
-    -- currentTarget.target = e.current
-
-    -- -- If no tool available just display a message
-    -- local next = next
-    -- if next(items) == nil then
-    --     if searchForProbe then
-    --         tes3.messageBox("You don't have probes")
-    --     else
-    --         tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
-    --     end
-    --     return
-    -- end
-
-    -- -- TODO check if destroy menu is needed
-    -- -- TODO remove dead code
-    -- if currentTarget.target == nil then
-	-- 	resetCurrentTarget()	-- may be not necessary
-	-- 	destroyWindow()
-	-- 	return
-	-- end
-
-	-- logDebug(string.format("Container/door %s (%p) - trapped %s, locked %s", currentTarget.target, currentTarget.target, currentTarget.isTrapped, currentTarget.isLocked))
-
-    -- createWindow(items)
-	-- updateTitle(searchForProbe)
-    -- highLightTool()
 end
 
 
@@ -1206,14 +1105,15 @@ local function initialize()
 
 	event.register(tes3.event.unequipped, onUnequipped)
 	event.register(tes3.event.menuEnter, onMenuEnter)
-	-- TODO register only when menu is displayed
-	-- TODO Use key in config file
-	event.register(tes3.event.keyDown, onKeyDown, { filter = tes3.scanCode.space })
 
-	-- DEBUG
+	-- TODO register only when menu is displayed
+	event.register(tes3.event.keyDown, onKeyDown, { filter = config.selectionKey.keyCode })
+
+	event.register(tes3.event.activate, onActivate)
+
+	-- DEBUG to delete after
 	event.register(tes3.event.lockPick, onLockPick)
 	event.register(tes3.event.trapDisarm, onTrapDisarm)
-	event.register(tes3.event.activate, onActivate)
 
 	GUIID_Menu = tes3ui.registerID(modName .. ":Menu")
 	GUIID_TestUI_ContentBlock = tes3ui.registerID(modName .. ":ContentBlock")
@@ -1279,7 +1179,7 @@ local function registerModConfig()
     catSettings:createYesNoButton {
 		label = "Display chance to unlock or disarm",
 		description = "Compute the chance to unlock the door/container to display only usable lockpicks",
-		variable = createtableVar("computeChance"),
+		variable = createtableVar("diplayChance"),
 		defaultSetting = true,
 	}
 
@@ -1290,9 +1190,17 @@ local function registerModConfig()
 		defaultSetting = false,
 	}
 
+    catSettings:createYesNoButton {
+		label = "Display lockpick usable when rested",
+		description = "Add to the selection menu lockpicks that are not usable to unlock at the current fatigue but usable when rested",
+		variable = createtableVar("selectUsableFullFatigue"),
+		defaultSetting = false,
+	}
+
 	-- https://easymcm.readthedocs.io/en/latest/components/settings/classes/KeyBinder.html
 	catSettings:createKeyBinder {
-		label = "Assign Keybind",
+		label = "Assign key for tool selection",
+		description = "Assign key for tool selection. Need to restart the game to apply the change",
 		allowCombinations = true,
 		defaultSetting = {
 			keyCode = tes3.scanCode.space,
@@ -1301,7 +1209,7 @@ local function registerModConfig()
 			isAltDown = false,
 			isControlDown = false,
 		},
-		variable = createtableVar("myKeybind") --TODO rename variable
+		variable = createtableVar("selectionKey")
 	}
 	mwse.mcm.register(template)
 end
