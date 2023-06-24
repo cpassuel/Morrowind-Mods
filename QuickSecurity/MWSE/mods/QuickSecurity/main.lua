@@ -1,27 +1,34 @@
 --[[
 	Quick Security
 	@author		
-	@version	0.70
+	@version	0.80
 	@changelog	0.50 Initial version
     
-	FIXME probe/lockpick unequipped => car trap activated => plus utile
-	FIXME trap actived just afer tool selection => tool not equipped fast enough => équiper l'outil et retarder la fermeture du menu
-	(attention aux multiples events onKeyDown => besoin d'un flag fermenuture en cours un faire le unregister avant ?
 	FIXME Quand pas de lockpick dispo après un disarm => pas de restoreWeapon
-	
 	TODO check behaviour with Equip Script fix in MCP
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
 
 	---------- TEST ----------
-	TODO restoreWeapon is on a epuise tous les outils sur le disarm et le unlock
-	TODO unequip
+	OK Unlock + restoreWeapon (locked only)
+	OK Disarm + restoreWeapon (trapped only)
+	OK Disarm + unlock + restoreWeapon
+	Unlock + no more lockpick + restoreWeapon
+	Disarm + no more probe + restoreWeapon
+	Unlock + lockpick broken => getLockpick
+	Disarm + probe broken => getProbe
+	Unlock + unequipped condition 0 => restoreWeapon
+	Disarm + unequipped condition 0 => restoreWeapon ou getLockpick
+	OK Disarm + haskey
+	OK Locked + no lockpick + hintHaskey
+
+	TODO player haskey => option to equip lockpick anyway ?
 
 --]]
 
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V0.70"
+local modVersion = "V0.80"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
@@ -41,9 +48,11 @@ local currentMenu = {
 	-- TODO put in playerAttribute
 	isWeaponAStateStored=false,	-- set to true if trapped
 	weapon = nil,
+	-- tes3mobilePlayer properties https://mwse.github.io/MWSE/types/tes3mobilePlayer/
 	weaponDrawn = false,
 	weaponReady = false,
 	castReady = false,
+	--
 	isEquipping = false,
 	isProbe = false,
 	currentEquippedTool = nil,	-- currently equipped tool (probe/lockpick) or nil
@@ -54,9 +63,7 @@ local currentTarget = {
 	target = nil,
 	isTrapped = false,
 	isLocked = false,
-	--isDisaring
-	--isUnlocking
-	isClosing = false,
+	isClosing = false,	-- closing the menu ?
 }
 
 -- TODO rename in playerInformation
@@ -108,6 +115,7 @@ local modDefaultConfig = {
     diplayChance = true,
 	selectUsableFullFatigue = false,	-- select also tools *usable* only with full fatigue (or fatigue higher than current fatigue)
 	hintKeyExists = false,
+	usePlayerKey = true,	-- if the player has the key to unlock, don't open lockpick menu
 	selectionKey = {
 	    keyCode = tes3.scanCode.space,
 	    isShiftDown = false,
@@ -142,7 +150,7 @@ end
 
 
 ---Log a string as Info level in MWSE.log
----@param msg string to be logged as Info in MWSE.log
+---@param msg string to be logged as INFO in MWSE.log
 local function logInfo(msg)
 	-- https://www.lua.org/pil/5.2.html
 	-- TODO get ride of string.format in calling 
@@ -153,7 +161,7 @@ end
 
 
 ---Log a message to MWSE.log if debug mode is enabled
----@param msg string to be logged as Info in MWSE.log
+---@param msg string to be logged as DEBUG in MWSE.log
 local function logDebug(msg)
 	if (config.debugMode) then
 		mwse.log('[' .. modName .. '] ' .. 'DEBUG ' .. msg)
@@ -162,7 +170,7 @@ end
 
 
 ---Log an error message to MWSE.log
----@param msg string to be logged as Error in MWSE.log
+---@param msg string to be logged as ERROR in MWSE.log
 -- TODO https://stackoverflow.com/questions/4021816/in-lua-how-can-you-print-the-name-of-the-current-function-like-the-c99-func
 local function logError(msg)
 	mwse.log('[' .. modName .. '] ' .. 'ERROR ' .. msg)
@@ -259,8 +267,8 @@ local function getUnlockChance(toolQuality, locklevel)
 	local curChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fatigueTerm + playerAttribute.fPickLockMult * locklevel
 	local fullChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fullFatigueTerm + playerAttribute.fPickLockMult * locklevel
 	logDebug(string.format("Unlock chance: %.2f - %.2f", curChance, fullChance))
-	-- add a max(0, chance) ?
-	return math.max(0,curChance), fullChance
+	-- Don't cap negative curChance to 0 because it is used to sort lockpicks
+	return curChance, fullChance
 end
 
 
@@ -408,13 +416,12 @@ local function restoreWeapon()
 		--tes3.mobilePlayer.castReady = currentMenu.castReady
 		--tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
 
-
 		--tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 		-- https://mwse.github.io/MWSE/apis/timer/#timerstart
-		-- timer.start({
-		-- 	duration = .5,
-		-- 	iterations = 1,
-		-- 	callback = function()
+		timer.start({
+			duration = .5,
+			iterations = 1,
+			callback = function()
 				tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 				tes3.mobilePlayer.castReady = currentMenu.castReady
 				tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
@@ -423,8 +430,8 @@ local function restoreWeapon()
 				--tes3.mobilePlayer.weaponReady = false
 				currentMenu.isWeaponAStateStored = false
 				logDebug(string.format("restoreWeapon: timer callback"))
-		-- 	end
-		-- })
+			end
+		})
 	end
 end
 
@@ -441,7 +448,7 @@ end
 --[[
 
 	UI functions
-
+	Menu structure
 	+--------------------------+
 	|+------------------------+|
 	||        Label           || GUIID_TestUI_NameLabel
@@ -471,22 +478,6 @@ end
                 Tool icon block
                 Tool label block
 
-s'il y a une clé pour le lock et que le joueur l'a, ne pas afficher la fenetre ?
-check if a tool is already equipped before displaying the window
-
-Options
-hideChance	don't display the chance to unlock with the lockpick
-selectWorstCondition select tools with the worst condition in order to minimize used tools in the inventory
-
-Object loocked/trapped actived
-	afficher le menu de selection outil
-	gerer la selection
-	fermer le menu
-	equiper l'outil
-
-Ne plus afficher le menu à moins que l'outil soit cassé
-Ou disarm réussi mais loocked => afficher menu
-
 ]]
 
 -- TODO try to reorganize functions
@@ -496,7 +487,8 @@ local onMouseWheel, destroyWindow
 -- https://mwse.github.io/MWSE/events/uiActivated/#event-data
 local function uiActivatedCallback(e)
 	logDebug(string.format("uiActivatedCallback %s", e.element))
-	-- TODO Destroy menu
+	-- Destroy menu
+	destroyWindow()
 end
 
 
@@ -692,7 +684,7 @@ local function createWindow(toolsTable)
 		end
 		if config.diplayChance then
 			-- display only curChance when selectUsableFullFatigue = false ?
-			labelText = labelText .. string.format(" %.f%% / %.f%%", toolsTable[v].curChance, toolsTable[v].fullChance)
+			labelText = labelText .. string.format(" %.f%% / %.f%%", math.max(0, toolsTable[v].curChance), toolsTable[v].fullChance)
 		end
 
 		-- add the GUIID for later selection job
@@ -733,9 +725,6 @@ destroyWindow=function()
 		event.unregister(tes3.event.mouseWheel, onMouseWheel)
 		event.unregister(tes3.event.uiActivated, uiActivatedCallback)
 
-		--TODO voir quand l'utiliser (cf. quick loot)
-		-- https://mwse.github.io/MWSE/apis/tes3ui/?h=leaveme#tes3uileavemenumode
-        --tes3ui.leaveMenuMode()
         menu:destroy()
     end
 end
@@ -751,7 +740,6 @@ end
 
 
 -- https://mwse.github.io/MWSE/apis/event/#eventregister
--- event.register(tes3.event.keyDown, onKeyDown, { filter = tes3.scanCode.space })
 local function onKeyDown(e)
 	if tes3ui.findMenu(GUIID_Menu) ~= nil then
 		logDebug("Event onKeyDown")
@@ -777,7 +765,7 @@ end
 -- https://mwse.github.io/MWSE/events/menuEnter/
 ---@param e any event object for menuEnter
 local function onMenuEnter(e)
-	logDebug(string.format("MenuEnter"))
+	logDebug(string.format("onMenuEnter"))
 	destroyWindow()
 end
 
@@ -1088,6 +1076,34 @@ end
 
 
 local function getLockpick(target)
+
+	-- TODO returns key instead ?
+	---Check if a key exists for this door/container
+	---@return boolean true is there is a key to open the door/container
+	local function objectHasKey()
+		if (target == nil) or (target.lockNode == nil) then
+			return false
+		else
+			return target.lockNode.key ~= nil
+		end
+	end
+
+	--DELETE ?
+	---Check if the player has the k to unlock the object
+	---@return boolean true if the player has the key to unlock the object in his inventory
+	local function playerHasKey()
+		if objectHasKey() then
+			logDebug(string.format("Target %s has key %s", target, target.lockNode.key))
+
+			return tes3.getItemCount({
+				reference = tes3.player,
+				item = target.lockNode.key
+			}) > 0
+		else
+			return false
+		end
+	end
+
 	currentTarget.target = target
 
 	destroyWindow()
@@ -1099,13 +1115,13 @@ local function getLockpick(target)
 	-- If no tool available just display a message
 	local next = next
 	if next(items) == nil then
-		--TODO how to manage objectHasKey ?
-		-- if config.hintKeyExists and objectHasKey() then
-		-- 	tes3.messageBox("You don't have good enough lockpicks to unlock but a key exists")
-		-- else
-		-- 	tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
-		-- end
-		tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
+		-- manage objectHasKey
+		--TODO modify text depending on objectType
+		if config.hintKeyExists and objectHasKey() then
+			tes3.messageBox("You don't have good enough lockpicks but a key exists to unlock")
+		else
+			tes3.messageBox("You don't have good enough lockpicks in your inventory")
+		end
 		restoreWeapon()
 		return
 	end
@@ -1164,8 +1180,11 @@ local function onUnequippedBis(e)
 		-- case disarm or unlock ?
 		logDebug(string.format("onUnequippedBis: tool %s OK, condition %d", e.item.name, e.itemData.condition))
 
+		--TODO Pb quand on change d'arme => unequipped lockpick => getLockpick
 		if tes3.getLocked({ reference = currentTarget.target }) then
-			getLockpick(currentTarget.target)
+			if not currentMenu.isEquipping then
+				getLockpick(currentTarget.target)
+			end
 		else
 			restoreWeapon()
 		end
@@ -1258,15 +1277,21 @@ local function onActivationTargetChangedBis(e)
 	elseif tes3.getLocked({ reference = target }) then
 		-- Locked
 		logDebug(string.format("onActivationTargetChangedBis: locked"))
+		--TODO move playerHasKey to getLockpick
 		if not playerHasKey() then
 			if not isLockpickEquipped() then
 				--
 				getLockpick(target)
 			end
+		else
+			if not config.usePlayerKey then
+				getLockpick(target)
+			end
 		end
 	else
 		-- Not trapped or locked
-		logDebug(string.format("onActivationTargetChangedBis: Not trapped or locked"))
+		logDebug(string.format("onActivationTargetChangedBis: %s Not trapped or locked", target))
+		destroyWindow()
 
 		if target == currentTarget.target then
 			-- final state: the object is disarmed and unlocked
@@ -1424,7 +1449,7 @@ local function registerModConfig()
 		defaultSetting = true,
 	}
 
-	local catSettings = page:createCategory("Mod Settings")
+	local catSettings = page:createCategory("General Settings")
 
 	catSettings:createYesNoButton {
 		label = "Equip the worst condition tool",
@@ -1440,18 +1465,27 @@ local function registerModConfig()
 		defaultSetting = true,
 	}
 
-    catSettings:createYesNoButton {
+	local catLock = page:createCategory("Lock / Lockpick Settings")
+
+    catLock:createYesNoButton {
 		label = "Hint - tell if there is a key to open",
 		description = "Gives the player a hint ",
 		variable = createtableVar("hintKeyExists"),
 		defaultSetting = false,
 	}
 
-    catSettings:createYesNoButton {
+    catLock:createYesNoButton {
 		label = "Display lockpick usable when rested",
 		description = "Add to the selection menu lockpicks that are not usable to unlock at the current fatigue but usable when rested",
 		variable = createtableVar("selectUsableFullFatigue"),
 		defaultSetting = false,
+	}
+
+    catLock:createYesNoButton {
+		label = "Use key in inventory",
+		description = "If the player has the key to unlock in his inventory, don't open the lockpick menu",
+		variable = createtableVar("usePlayerKey"),
+		defaultSetting = true,
 	}
 
 	-- https://easymcm.readthedocs.io/en/latest/components/settings/classes/KeyBinder.html
