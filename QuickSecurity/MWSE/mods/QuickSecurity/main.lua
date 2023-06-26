@@ -8,18 +8,19 @@
 	TODO check behaviour with Equip Script fix in MCP
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
 
+	
 	---------- TEST ----------
-	OK Unlock + restoreWeapon (locked only)
-	OK Disarm + restoreWeapon (trapped only)
-	OK Disarm + unlock + restoreWeapon
+	Unlock + restoreWeapon (locked only)
+	Disarm + restoreWeapon (trapped only)
+	Disarm + unlock + restoreWeapon
 	Unlock + no more lockpick + restoreWeapon
 	Disarm + no more probe + restoreWeapon
 	Unlock + lockpick broken => getLockpick
 	Disarm + probe broken => getProbe
 	Unlock + unequipped condition 0 => restoreWeapon
 	Disarm + unequipped condition 0 => restoreWeapon ou getLockpick
-	OK Disarm + haskey
-	OK Locked + no lockpick + hintHaskey
+	Disarm + haskey
+	Locked + no lockpick + hintHaskey
 
 	TODO player haskey => option to equip lockpick anyway ?
 
@@ -45,7 +46,7 @@ local currentMenu = {
 	itemsCount = 0,
 	currentIndex = 0,
 	window = nil,
-	-- TODO put in playerAttribute
+	--
 	isWeaponAStateStored=false,	-- set to true if trapped
 	weapon = nil,
 	-- tes3mobilePlayer properties https://mwse.github.io/MWSE/types/tes3mobilePlayer/
@@ -267,7 +268,7 @@ local function getUnlockChance(toolQuality, locklevel)
 	local curChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fatigueTerm + playerAttribute.fPickLockMult * locklevel
 	local fullChance = playerAttribute.securityRatio * toolQuality * playerAttribute.fullFatigueTerm + playerAttribute.fPickLockMult * locklevel
 	logDebug(string.format("Unlock chance: %.2f - %.2f", curChance, fullChance))
-	-- Don't cap negative curChance to 0 because it is used to sort lockpicks
+	-- Don't cap negative curChance to 0 because it is used to sort lockpicks later
 	return curChance, fullChance
 end
 
@@ -377,7 +378,6 @@ local function storeWeapon()
 		currentMenu.weapon = equipStack.object
 	end
 
-	--currentMenu.weaponDrawn = tes3.mobilePlayer.weaponDrawn
 	currentMenu.weaponReady = tes3.mobilePlayer.weaponReady
 	currentMenu.castReady = tes3.mobilePlayer.castReady
 	currentMenu.isWeaponAStateStored = true
@@ -388,8 +388,6 @@ end
 
 ---Restore the weapon and weaponDrawn state before the tool equipping
 local function restoreWeapon()
-	--TODO add a delay before equiping ?
-	-- check prerequisites
 	logDebug(string.format("restoreWeapon %s - %p", currentMenu.weapon, currentMenu.weapon))
 
 	if currentMenu.isWeaponAStateStored then
@@ -425,9 +423,6 @@ local function restoreWeapon()
 				tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 				tes3.mobilePlayer.castReady = currentMenu.castReady
 				tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
-				-- DEBUG
-				--tes3.mobilePlayer.castReady = false
-				--tes3.mobilePlayer.weaponReady = false
 				currentMenu.isWeaponAStateStored = false
 				logDebug(string.format("restoreWeapon: timer callback"))
 			end
@@ -480,23 +475,20 @@ end
 
 ]]
 
--- TODO try to reorganize functions
--- forward functions declaration
+-- TODO try to reorganize functions to remove forward functions declaration
 local onMouseWheel, destroyWindow
 
 -- https://mwse.github.io/MWSE/events/uiActivated/#event-data
 local function uiActivatedCallback(e)
 	logDebug(string.format("uiActivatedCallback %s", e.element))
-	-- Destroy menu
-	destroyWindow()
 end
 
 
 ---Equip the selected tool in the menu
 local function equipSelectedTool()
 
-    ---comment
-	---@return any 
+    ---Retrieve the selected tool from the menu
+	---@return any tool selected (highligthed) tool in the menu
 	local function retrieveSelectedTool()
         -- retrieve the block containing the items
         -- TODO put and retrieve in currentMenu (same for other GUID)
@@ -517,6 +509,11 @@ local function equipSelectedTool()
 		local menu = tes3ui.findMenu(GUIID_Menu)
 		local titleBlock = menu:findChild(GUIID_TestUI_TitleBlock)
 		return titleBlock:getPropertyBool(modName .. ":isProbe")
+	end
+
+	-- already equipping
+	if currentMenu.isEquipping then
+		return
 	end
 
 	currentMenu.isEquipping = true
@@ -607,9 +604,9 @@ local function updateTitle(isProbe)
 	-- only one child
 	local titleLabel = titleBlock.children[1]
 	if isProbe then
-		titleLabel.text = "Select a probe"
+		titleLabel.text = i18n("Menu.title_probe")
 	else
-		titleLabel.text = "Select a lockpick"
+		titleLabel.text = i18n("Menu.title_lockpick")
 	end
 
 	titleLabel:updateLayout()
@@ -623,7 +620,7 @@ local function createWindow(toolsTable)
 		return
 	end
 
-	logDebug(string.format("Create Window"))
+	logDebug(string.format("createWindow"))
 
 	if (tes3ui.findMenu(GUIID_Menu)) then
         return
@@ -631,12 +628,13 @@ local function createWindow(toolsTable)
 
 	local next = next
 	if next(toolsTable) == nil then
-        logError("list of tools MUST NOT BE EMPTY")
+        logError("createWindow: list of tools MUST NOT BE EMPTY")
         return
 	end
 
 	-- Create window and frame
 	local menu = tes3ui.createMenu{ id = GUIID_Menu, fixedFrame = true }
+	currentMenu.window = menu
 
 	-- To avoid low contrast, text input windows should not use menu transparency settings
 	menu.alpha = 1.0
@@ -726,6 +724,8 @@ destroyWindow=function()
 		event.unregister(tes3.event.uiActivated, uiActivatedCallback)
 
         menu:destroy()
+
+		currentMenu.window = nil
     end
 end
 
@@ -955,13 +955,13 @@ local function manageCurrentTarget(target)
 end
 
 
----DEBUG
+---DEBUG delete after tests
 ---https://mwse.github.io/MWSE/events/lockPick/
 local function onLockPick(e)
 	logDebug(string.format("Event lockPick - %s (%.2f)", e.tool, e.chance))
 end
 
----DEBUG
+---DEBUG delete after tests
 ---https://mwse.github.io/MWSE/events/trapDisarm/
 local function onTrapDisarm(e)
 	logDebug(string.format("Event trapDisarm - %s (%.2f)", e.tool, e.chance))
@@ -970,9 +970,8 @@ end
 
 ---https://mwse.github.io/MWSE/events/activate/
 ---Prevent the activation of the trap when equipping a probe
----TODO useless for locks ?
 ---@param e any onActivate object
----@return any
+---@return any false when equipping tool to cancel the event
 local function onActivate(e)
 	logDebug(string.format("Event onActivate - activator  %s, target  %s", e.activator, e.target))
 
@@ -991,21 +990,6 @@ local function onActivate(e)
 		return false
 	end
 end
-
-
---[[
-
-currentTool == nil => exit
-item unequipped <> currentTool => exit
-item unequipped == currentTool (implicit)
-	set currentTool = nil ?
-	condition <> 0 => exit (manual unequiped or unequipped by mod(restoreWeapon))
-	condition == 0
-		target unlocked or disarmed (se souvenir de l'opération en cours ?) => détailler
-			disarmed et currentTool = probe
-				locked ? => manageTarget
-		sinon trapped et currentTool = probe ou locked et currentTool = lockpick => broken tool => manageTarget
-]]
 
 
 -- FIXME tool broken does not work => pas le message broken
@@ -1118,9 +1102,9 @@ local function getLockpick(target)
 		-- manage objectHasKey
 		--TODO modify text depending on objectType
 		if config.hintKeyExists and objectHasKey() then
-			tes3.messageBox("You don't have good enough lockpicks but a key exists to unlock")
+			tes3.messageBox(i18n("MSG.NoLockpickButKey"))
 		else
-			tes3.messageBox("You don't have good enough lockpicks in your inventory")
+			tes3.messageBox(i18n("MSG.NoLockpick"))
 		end
 		restoreWeapon()
 		return
@@ -1144,7 +1128,7 @@ local function getProbe(target)
 	-- If no tool available just display a message
 	local next = next
 	if next(items) == nil then
-		tes3.messageBox("You don't have probes in your inventory")
+		tes3.messageBox(i18n("MSG.NoProbe"))
 		-- case exhauted probe
 		restoreWeapon()
 		return
@@ -1176,6 +1160,8 @@ local function onUnequippedBis(e)
 
 	currentMenu.currentEquippedTool = nil
 
+	-- TEST prevent menu to stay displayed with manual unequip
+	destroyWindow()
 	if (e.itemData.condition > 0) then
 		-- case disarm or unlock ?
 		logDebug(string.format("onUnequippedBis: tool %s OK, condition %d", e.item.name, e.itemData.condition))
@@ -1257,6 +1243,7 @@ local function onActivationTargetChangedBis(e)
 	end
 
 	if e.current == nil then
+		currentTarget.target = nil
 		destroyWindow()
 		return
 	end
@@ -1286,6 +1273,9 @@ local function onActivationTargetChangedBis(e)
 		else
 			if not config.usePlayerKey then
 				getLockpick(target)
+			else
+				-- DEBUG to restoreWeapon is case of disarmed and player has key
+				restoreWeapon()
 			end
 		end
 	else
@@ -1388,12 +1378,12 @@ local function initialize()
 	event.register(tes3.event.unequipped, onUnequippedBis)
 	event.register(tes3.event.menuEnter, onMenuEnter)
 
-	-- TODO register only when menu is displayed
+	-- TODO register only when menu is displayed (createWindow)
 	event.register(tes3.event.keyDown, onKeyDown, { filter = config.selectionKey.keyCode })
 
 	event.register(tes3.event.activate, onActivate)
 
-	-- DEBUG to delete after
+	-- DEBUG to delete after tests
 	event.register(tes3.event.lockPick, onLockPick)
 	event.register(tes3.event.trapDisarm, onTrapDisarm)
 
@@ -1436,62 +1426,62 @@ local function registerModConfig()
 	-- https://easymcm.readthedocs.io/en/latest/components/pages/classes/SideBarPage.html
 	local page = template:createSideBarPage{
 		label = "Sidebar Page",
-		description = modName .. " " .. modVersion
+		description = modName .. " " .. modVersion .. " (c) by " .. modAuthor
 	}
 
 	-- You can create categories to group settings
 	-- https://easymcm.readthedocs.io/en/latest/components/categories/classes/Category.html
 	local catMain = page:createCategory(modName)
 	catMain:createYesNoButton {
-		label = "Enable " .. modName,
-		description = "Allows you to Enable or Disable this mod",
+		label = i18n("MCM.modEnabled.label") .. modName,
+		description = i18n("MCM.modEnabled.description"),
 		variable = createtableVar("modEnabled"),
 		defaultSetting = true,
 	}
 
-	local catSettings = page:createCategory("General Settings")
+	local catSettings = page:createCategory(i18n("MCM.catGalSettings"))
 
 	catSettings:createYesNoButton {
-		label = "Equip the worst condition tool",
-		description = "Equip the worst condition tool (already used) to prevent having too many used tools",
+		label = i18n("MCM.useWorstCondition.label"),
+		description = i18n("MCM.useWorstCondition.description"),
 		variable = createtableVar("useWorstCondition"),
 		defaultSetting = true,
 	}
 
     catSettings:createYesNoButton {
-		label = "Display chance to unlock or disarm",
-		description = "Compute the chance to unlock the door/container to display only usable lockpicks",
+		label = i18n("MCM.diplayChance.label"),
+		description = i18n("MCM.diplayChance.description"),
 		variable = createtableVar("diplayChance"),
 		defaultSetting = true,
 	}
 
-	local catLock = page:createCategory("Lock / Lockpick Settings")
+	local catLock = page:createCategory(i18n("MCM.catLock"))
 
     catLock:createYesNoButton {
-		label = "Hint - tell if there is a key to open",
-		description = "Gives the player a hint ",
+		label = i18n("MCM.hintKeyExists.label"),
+		description = i18n("MCM.hintKeyExists.description"),
 		variable = createtableVar("hintKeyExists"),
 		defaultSetting = false,
 	}
 
     catLock:createYesNoButton {
-		label = "Display lockpick usable when rested",
-		description = "Add to the selection menu lockpicks that are not usable to unlock at the current fatigue but usable when rested",
+		label = i18n("MCM.selectUsableFullFatigue.label"),
+		description = i18n("MCM.selectUsableFullFatigue.description"),
 		variable = createtableVar("selectUsableFullFatigue"),
 		defaultSetting = false,
 	}
 
     catLock:createYesNoButton {
-		label = "Use key in inventory",
-		description = "If the player has the key to unlock in his inventory, don't open the lockpick menu",
+		label = i18n("MCM.usePlayerKey.label"),
+		description = i18n("MCM.usePlayerKey.description"),
 		variable = createtableVar("usePlayerKey"),
 		defaultSetting = true,
 	}
 
 	-- https://easymcm.readthedocs.io/en/latest/components/settings/classes/KeyBinder.html
 	catSettings:createKeyBinder {
-		label = "Assign key for tool selection",
-		description = "Assign key for tool selection. Need to restart the game to apply the change",
+		label = i18n("MCM.selectionKey.label"),
+		description = i18n("MCM.selectionKey.description"),
 		allowCombinations = true,
 		defaultSetting = {
 			keyCode = tes3.scanCode.space,
