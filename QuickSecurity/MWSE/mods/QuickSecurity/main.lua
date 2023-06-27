@@ -1,13 +1,11 @@
 --[[
 	Quick Security
 	@author		
-	@version	0.80
-	@changelog	0.50 Initial version
+	@version	0.90
+	@changelog	1.0.0 Initial version
     
-	FIXME Quand pas de lockpick dispo après un disarm => pas de restoreWeapon
 	TODO check behaviour with Equip Script fix in MCP
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
-
 	
 	---------- TEST ----------
 	Unlock + restoreWeapon (locked only)
@@ -29,7 +27,7 @@
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V0.80"
+local modVersion = "V0.90"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
@@ -67,7 +65,6 @@ local currentTarget = {
 	isClosing = false,	-- closing the menu ?
 }
 
--- TODO rename in playerInformation
 local playerAttribute = {
 	agility = 0,
 	luck = 0,
@@ -226,7 +223,7 @@ end
 
 --- Compute and save current player stats 
 local function getPlayerStats()
-	-- skill et attributes
+	-- skill and attributes
 	local player = tes3.mobilePlayer
 
 	playerAttribute.security = player.security.current
@@ -396,8 +393,6 @@ local function restoreWeapon()
 		currentMenu.currentEquippedTool = nil
 		-- need a timer to give time to unequip the probe/lockpick
 		-- TODO secure it by cancelling when there is already a timer started
-		-- FIXME weapon always drawn then go back to desired state
-		-- TODO use a double timer ? first weaponReady = false then equip then restore weaponReady
 
 		-- DEBUG test unequip first
 		tes3.mobilePlayer.weaponReady = false
@@ -411,10 +406,7 @@ local function restoreWeapon()
 			objectType = tes3.objectType.lockpick
 		end
 		tes3.mobilePlayer:unequip({ type = objectType})
-		--tes3.mobilePlayer.castReady = currentMenu.castReady
-		--tes3.mobilePlayer.weaponReady = currentMenu.weaponReady
 
-		--tes3.mobilePlayer:equip({ item = currentMenu.weapon, selectBestCondition = true })
 		-- https://mwse.github.io/MWSE/apis/timer/#timerstart
 		timer.start({
 			duration = .5,
@@ -709,13 +701,12 @@ local function createWindow(toolsTable)
 end
 
 
---- Destroy the menu if exists
+--- Destroy the menu if it exists
 destroyWindow=function()
 	local menu = tes3ui.findMenu(GUIID_Menu)
 
 	logDebug("destroyWindow")
 
-	-- TODO add flag isDisplayed ?
 	if (menu) then
 		logDebug("Destroy existing Menu")
 		-- unregister events registered only for the life of the menu 
@@ -770,191 +761,6 @@ local function onMenuEnter(e)
 end
 
 
----Manage action on a non nil target
----@param target any activated target
-local function manageCurrentTarget(target)
-
-	-- TODO returns key instead ?
-	---Check if a key exists for this door/container
-	---@return boolean true is there is a key to open the door/container
-	local function objectHasKey()
-		if (target == nil) or (target.lockNode == nil) then
-			return false
-		else
-			return target.lockNode.key ~= nil
-		end
-	end
-
-
-	---Check if the player has the k to unlock the object
-	---@return boolean true if the player has the key to unlock the object in his inventory
-	local function playerHasKey()
-		if objectHasKey() then
-			logDebug(string.format("Target %s has key %s", target, target.lockNode.key))
-
-			return tes3.getItemCount({
-				reference = tes3.player,
-				item = target.lockNode.key
-			}) > 0
-		else
-			return false
-		end
-	end
-
-	logDebug(string.format("manageCurrentTarget"))
-
-	-- currently equiping tool no need to do something
-	if currentMenu.isEquipping then
-		return
-	end
-
-	local searchForProbe = false
-
-	-- TODO Refactor the 3 branches of the test
-	-- check if same target => meaning it has been disarmed or unlocked
-	if (currentTarget.target == target) then
-		-- same target so it is a door or a container
-		-- case tool broken => managed in onUnequipped
-		logDebug(string.format("manageCurrentTarget with same target %s - %p", target, target))
-
-		-- TODO rewrite tests
-		-- DEBUG
-		logDebug(string.format("target %s (trapped %s)", target, tes3.getTrap({ reference = target })))
-
-		if tes3.getTrap({ reference = target }) then
-			logError(string.format("Same target but still trapped %s - %p", target, target))
-			-- If probe equipped exit
-			if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.probe }) then
-				logDebug(string.format("manageCurrentTarget - Probe already equipped"))
-				return
-			end
-
-			searchForProbe = true
-			currentTarget.isTrapped = true
-		else
-			if not tes3.getLocked({ reference = target }) then
-				-- final state: the object is disarmed and unlocked
-				-- may be can unregister unequipped event
-				resetCurrentTarget()
-				restoreWeapon()
-				return
-			else
-				-- locked
-				logError(string.format("Same target but still locked %s - %p", target, target))
-
-				if objectHasKey() then
-					logDebug(string.format("manageCurrentTarget - objectHasKey"))
-					if playerHasKey() then
-						logDebug(string.format("manageCurrentTarget - playerHasKey"))
-						-- check if the player has the key (cf. Security Enhanced). If so do not equip lockpick (option in config ?)
-
-						-- qu'est ce qui arrive si le joueur a la clé mais que le lockpick est équipé ?
-					return
-					end
-				end
-
-				-- TODO test lockpick equipped
-				if  tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
-					logDebug(string.format("manageCurrentTarget: lockpick already equipped"))
-					return
-				end
-				currentTarget.isTrapped = false
-				currentTarget.isLocked =true
-				searchForProbe = false
-			end
-		end
-	else
-		-- New target, check if it's a door / container
-		-- TODO remove 
-		if (target.object.objectType ~= tes3.objectType.container) and (target.object.objectType ~= tes3.objectType.door) then
-			resetCurrentTarget()
-			return
-		end
-
-		-- https://mwse.github.io/MWSE/apis/tes3/#tes3gettrap (returns nil if not trapped)
-		if tes3.getTrap({ reference = target }) then
-			-- test if probe equipped
-			-- https://mwse.github.io/MWSE/apis/tes3/#tes3getequippeditem
-			if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.probe }) then
-				logDebug(string.format("manageCurrentTarget - Probe already equipped"))
-				return
-			end
-			currentTarget.isTrapped = true
-			searchForProbe = true
-		else
-			-- https://mwse.github.io/MWSE/apis/tes3/#tes3getlocked (returns true if locked)
-			if tes3.getLocked({ reference = target }) then
-
-				if (target.lockNode.key ~= nil) then
-					tes3.messageBox(string.format("DEBUG There is key for this object: %s", target.lockNode.key))
-					-- check if the player has the key (cf. Security Enhanced). If so do not equip lockpick (option in config ?)
-
-					-- qu'est ce qui arrive si le joueur a la clé mais que le lockpick est équipé ?
-				end
-
-				-- check for an equipped lockpick
-				if tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick }) then
-					logDebug(string.format("manageCurrentTarget - lockpick already equipped"))
-					return
-				end
-
-				currentTarget.isLocked = true
-				searchForProbe = false
-			else
-				-- not locked and not trapped => exit
-				resetCurrentTarget()
-				return
-			end
-		end
-	end
-
-	-- trapped or locked and no related tool equipped
-	currentTarget.target = target
-
-	local items
-	if searchForProbe then
-		items = searchTools(searchForProbe, target.lockNode.trap.magickaCost)
-	else
-		items = searchTools(searchForProbe, tes3.getLockLevel({ reference = target }))
-	end
-
-	currentTarget.target = target
-
-	-- If no tool available just display a message
-	local next = next
-	if next(items) == nil then
-		if searchForProbe then
-			tes3.messageBox("You don't have probes")
-		else
-			if config.hintKeyExists and objectHasKey() then
-				tes3.messageBox("You don't have good enough lockpicks to unlock but a key exists")
-			else
-				tes3.messageBox("You don't have lockpicks or your lockpicks are not good enough to unlock")
-			end
-			-- TODO check if a probe is equipped
-			if currentMenu.currentEquippedTool then
-				restoreWeapon()
-			end
-		end
-		-- Exit nothing to do
-		return
-	end
-
-	-- TODO check if destroy menu is needed
-	if currentTarget.target == nil then
-		resetCurrentTarget()	-- may be not necessary
-		destroyWindow()
-		return
-	end
-
-	logDebug(string.format("Container/door %s (%p) - trapped %s, locked %s", currentTarget.target, currentTarget.target, currentTarget.isTrapped, currentTarget.isLocked))
-
-	createWindow(items)
-	updateTitle(searchForProbe)
-	highLightTool()
-end
-
-
 ---DEBUG delete after tests
 ---https://mwse.github.io/MWSE/events/lockPick/
 local function onLockPick(e)
@@ -992,56 +798,6 @@ local function onActivate(e)
 end
 
 
--- FIXME tool broken does not work => pas le message broken
--- FIXME tool broken does not work => pas de menu
---- Manage unequipped event
--- https://mwse.github.io/MWSE/events/unequipped/
----@param e any event object
-local function onUnequipped(e)
-	if not config.modEnabled then
-		return
-	end
-
-	logDebug(string.format("onUnequipped: item %s (%p), type %d", e.item.name, e.item, e.item.objectType))
-	logDebug(string.format("onUnequipped: currentTarget.target %s", currentTarget.target))
-
-	-- if currentTarget.target == nil then
-	-- 	return
-	-- end
-
-	-- e.item is tes3baseObject
-	if (e.item.objectType ~= tes3.objectType.probe) and (e.item.objectType ~= tes3.objectType.lockpick) then
-		return
-	end
-
-	-- condition=0 => broken sinon unequip normal
-	if (e.itemData)
-	then
-		-- https://mwse.github.io/MWSE/types/tes3itemData/#condition
-		logDebug(string.format("onUnequipped: item %s, condition %d", e.item.name, e.itemData.condition))
-		-- TODO check target state (trapped/locked) => need to keep the target reference
-		if (e.itemData.condition == 0) then
-			logDebug(string.format("onUnequipped: Broken tool %s", e.item.name))
-
-			if (currentTarget.target) then
-				manageCurrentTarget(currentTarget.target)
-			end
-			-- que faire quand condition > 0 (unequip manuel ou depuis restoreWeapon) ??? rien ?
-			-- Attention le unequipped peut être du au restoreWeapon
-		end
-	end
-
-	-- TODO better checks because when you equip a tool, you can unequip a weapon => dedicated variable
-	-- TODO check if restoreWeapon() should be ok because currentTarget is nil
-
-	-- event unequipped when the probe/locpick is completly used (condition = 0)
-	-- => redo the same as in ActivatedChanged
-	-- TODO change functione name
-	-- TODO pass a target object. how to get the reference ????
-	--manageCurrentTarget(e.item)
-end
-
-
 ---Update the selected tool in the menu depending on mousewheel direction
 ---@param e any mousewheel event
 onMouseWheel = function(e)
@@ -1072,21 +828,6 @@ local function getLockpick(target)
 		end
 	end
 
-	--DELETE ?
-	---Check if the player has the k to unlock the object
-	---@return boolean true if the player has the key to unlock the object in his inventory
-	local function playerHasKey()
-		if objectHasKey() then
-			logDebug(string.format("Target %s has key %s", target, target.lockNode.key))
-
-			return tes3.getItemCount({
-				reference = tes3.player,
-				item = target.lockNode.key
-			}) > 0
-		else
-			return false
-		end
-	end
 
 	currentTarget.target = target
 
@@ -1274,7 +1015,8 @@ local function onActivationTargetChangedBis(e)
 			if not config.usePlayerKey then
 				getLockpick(target)
 			else
-				-- DEBUG to restoreWeapon is case of disarmed and player has key
+				-- restoreWeapon is case of disarmed and player has key
+				tes3.messageBox(i18n("MSG.UseKey"))
 				restoreWeapon()
 			end
 		end
@@ -1290,74 +1032,6 @@ local function onActivationTargetChangedBis(e)
 			restoreWeapon()
 		end
 	end
-end
-
-
--- TODO isolate in a dedicated function for use on unEuipped
--- same target
---   trapped -> disarmed
---     locked => display menu
---     unlocked => returns
---[[
-
-Plusieurs cas
-
-	- Target nil
-		destroyed ?
-	- Same target
-	- New target
-		Destroy Window
-		tool still equipped ? => restoreWeapon
-		Test trapped/locked	door/container
-
-]]
----Event fired when a target changes or a target is disarmed or unlocked (target nil)
----https://mwse.github.io/MWSE/events/activationTargetChanged/
----@param e any activationTargetChanged event object
-local function onActivationTargetChanged(e)
-	if not config.modEnabled then
-		return
-	end
-
-	logDebug(string.format("Event onActivationTargetChanged: Current = %p and Previous = %p", e.current, e.previous))
-
-	-- FIXME quand un probe/lockpick est cassé (condition=0) => onActivationTargetChanged avec current = nil
-	-- e.current is a tes3reference
-	if e.current == nil then
-		logDebug(string.format("onActivationTargetChanged - No object"))
-		--resetCurrentTarget()
-		destroyWindow()
-		return
-	end
-
-	-- check new object actived
-	-- TODO refactor test
-	-- TODO traiter le cas ou currentTarget.target est nil auparavant (pas sur un objet trapped/unlocked)
-	if e.current ~= nil	 then
-		if e.current ~= currentTarget.target then
-			-- New target activated (target not nil and not the current)
-			resetCurrentTarget()
-			-- destroy the menu (may be already deleted)
-			destroyWindow()
-
-			-- exit if not door or container
-			if (e.current.object.objectType ~= tes3.objectType.container) and (e.current.object.objectType ~= tes3.objectType.door) then
-				return
-			end
-
-			-- check trap / lock ? voir si cela pose problème pour la détection de la fin disarm/unlock
-		else
-			-- destroy the menu (may be already deleted)
-			destroyWindow()
-
-			-- check if we still have the last selected tool still equipped if so restore weapon if not already done (flag in restoreWeapon)
-
-			-- en revanche ne pas faire de resetCurrentTarget() pour les cas des outils cassé mais
-			-- à traiter dans l'event unequipped car pas d'event onActivationTargetChanged
-		end
-	end
-
-	manageCurrentTarget(e.current)
 end
 
 
@@ -1384,8 +1058,10 @@ local function initialize()
 	event.register(tes3.event.activate, onActivate)
 
 	-- DEBUG to delete after tests
-	event.register(tes3.event.lockPick, onLockPick)
-	event.register(tes3.event.trapDisarm, onTrapDisarm)
+	if config.debugMode then
+		event.register(tes3.event.lockPick, onLockPick)
+		event.register(tes3.event.trapDisarm, onTrapDisarm)
+	end
 
 	GUIID_Menu = tes3ui.registerID(modName .. ":Menu")
 	GUIID_TestUI_ContentBlock = tes3ui.registerID(modName .. ":ContentBlock")
