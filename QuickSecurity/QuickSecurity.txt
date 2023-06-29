@@ -1,7 +1,7 @@
 =====================================================================================
                                     Quick Security                                     
                                    Author: cpassuel
-                                     Version 0.10
+                                     Version 1.0.0
 =====================================================================================
 
  INDEX:
@@ -43,7 +43,7 @@
  INSTALLATION:
 =====================================================================================
 
- Extract the archive into your Data Files\ directory
+ Extract the archive into your Morrowind\Data Files\ directory
 
  To uninstall, delete the folder Data Files\MWSE\mods\QuickSecurity\ and
  Data Files\QuickSecurity-metadata.toml. you can also delete the config file
@@ -56,17 +56,31 @@
  There is no esp file to activate. Simply install the MWSE 2.1 and this mod, and
  load up an old or new game.
 
+ On a trapped or locked door / container, a menu will appear allowing you to select
+ a probe or a lockpick. Press SPACE (default key) to equip it.
+
+ If your tool breaks while disarming or unlocking the selection menu will appear to
+ select a new tool.
+
+ Lockpicks usable when rested are displayed in red (see options to activate it)
+
+ You can display the chance to disarm or unlock for each tool in the selection menu in
+ the options
+
 =====================================================================================
  KNOWN ISSUES OR BUGS:
 =====================================================================================
  
  Please report any issues on the Nexus page https://www.nexusmods.com/morrowind/mods/52918
 
+ The german translation was done with Google transalate so feel free to send me a better
+ translation
+
 =====================================================================================
  VERSION HISTORY
 =====================================================================================
 
- 0.10   [2023-xx-xx]: Initial release
+ 1.0.0   [2023-06-27]: Initial release
 
  =====================================================================================
  INCOMPATIBILITIES & SAVED GAME WARNINGS:
