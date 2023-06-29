@@ -12,7 +12,7 @@ return {
     ["MCM.hintKeyExists.label"] ="Give the player a hint if a key exits",
     ["MCM.hintKeyExists.description"] ="Give the player a hint if there is a key to unlock the door/container",
     ["MCM.selectUsableFullFatigue.label"] ="Display also lockpick usable when rested",
-    ["MCM.selectUsableFullFatigue.description"] ="Add to the selection menu, lockpicks that are usable when rested but not usable at the current fatigue. You need to rest to use them\nUsable only rested tools are displayed in red.",
+    ["MCM.selectUsableFullFatigue.description"] ="Add to the selection menu, lockpicks that are usable when rested but not usable at the current fatigue. You need to rest to use them.\nUsable only rested tools are displayed in red.",
     ["MCM.usePlayerKey.label"] = "Use the key in the inventory",
     ["MCM.usePlayerKey.description"] = "If the player has the key to unlock in his inventory, don't open the lockpick menu",
     ["MCM.selectionKey.label"] = "Assign a key for tool selection",
