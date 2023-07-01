@@ -4,6 +4,7 @@
         "mwse",
         "event",
         "tes3ui",
-        "mwscript"
+        "mwscript",
+        "timer"
     ]
 }
