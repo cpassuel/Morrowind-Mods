@@ -1,38 +1,22 @@
 --[[
 	Quick Security
 	@author		
-	@version	0.90
+	@version	1.0.0
 	@changelog	1.0.0 Initial version
     
 	TODO check behaviour with Equip Script fix in MCP
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
-	
-	---------- TEST ----------
-	Unlock + restoreWeapon (locked only)
-	Disarm + restoreWeapon (trapped only)
-	Disarm + unlock + restoreWeapon
-	Unlock + no more lockpick + restoreWeapon
-	Disarm + no more probe + restoreWeapon
-	Unlock + lockpick broken => getLockpick
-	Disarm + probe broken => getProbe
-	Unlock + unequipped condition 0 => restoreWeapon
-	Disarm + unequipped condition 0 => restoreWeapon ou getLockpick
-	Disarm + haskey
-	Locked + no lockpick + hintHaskey
-
-	TODO player haskey => option to equip lockpick anyway ?
 
 --]]
 
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V0.90"
+local modVersion = "V1.0.0"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
 
--- TODO put in a table
 -- Keep track of all the GUI IDs we care about.
 local GUIID_Menu = nil
 local GUIID_TestUI_TitleBlock = nil
@@ -121,7 +105,7 @@ local modDefaultConfig = {
 	    isControlDown =false
 	},
 	--
-	debugMode = true,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
+	debugMode = false,	-- true for debugging purpose should be false for mod release, it could be a MCM option, currently you have to change its value in the config file
 }
 
 
@@ -493,8 +477,6 @@ local function equipSelectedTool()
         return selectedBlock:getPropertyObject(modName .. ":Item")
     end
 
-
-	---TODO may cause issues when manual equipment
 	---Retrieve the isProbe flag that define if the menu is about probe (true) or lockpick (false) from the title block
 	---@return boolean return the kind of tool in the menuprobe (true) or lockpick (false)
 	local function getIsProbe()
@@ -516,7 +498,6 @@ local function equipSelectedTool()
 	currentMenu.currentEquippedTool = item
 	currentMenu.isProbe= getIsProbe()
 
-    -- TODO how and when to reset isWeaponAStateStored
 	-- TODO need to track the right weapon as when you pass from trapped to locked, the equipped will be the probe not the initial weapon same for weaponDrawn
 	-- keep track of the already equipped weapon
     if not currentMenu.isWeaponAStateStored then
@@ -529,7 +510,6 @@ local function equipSelectedTool()
 	-- https://mwse.github.io/MWSE/types/tes3mobilePlayer/?h=weapondrawn#weaponready
 	tes3.mobilePlayer.weaponReady = true
 
-	-- TODO add a flag to prevent multiple call back
 	timer.start({
 		duration = .3,
 		iterations = 1,
@@ -815,6 +795,8 @@ onMouseWheel = function(e)
 end
 
 
+---Search for lockpicks for the given target and if any open the selection menu
+---@param target any locked door/container
 local function getLockpick(target)
 
 	-- TODO returns key instead ?
@@ -828,7 +810,6 @@ local function getLockpick(target)
 		end
 	end
 
-
 	currentTarget.target = target
 
 	destroyWindow()
@@ -836,7 +817,6 @@ local function getLockpick(target)
 	logDebug(string.format("getLockpick: target %s (%p)", target, target))
 
 	local items = searchTools(false, tes3.getLockLevel({ reference = target }))
-
 	-- If no tool available just display a message
 	local next = next
 	if next(items) == nil then
@@ -857,6 +837,8 @@ local function getLockpick(target)
 end
 
 
+---Search for probes for the given target and if any open the selection menu
+---@param target any trapped door/container
 local function getProbe(target)
 	currentTarget.target = target
 
@@ -881,10 +863,10 @@ local function getProbe(target)
 end
 
 
-
-
----@param e any event object
-local function onUnequippedBis(e)
+--TODO rename
+---manage unEquipped events by opening selection menu if needed
+---@param e any event
+local function onUnequipped(e)
 	if not config.modEnabled then
 		return
 	end
@@ -895,17 +877,17 @@ local function onUnequippedBis(e)
 
 	-- other item equipped
 	if (currentMenu.currentEquippedTool) == nil or (e.item ~= currentMenu.currentEquippedTool) then
-		logDebug(string.format("onUnequippedBis: Skipping - item %s (%p)", e.item.name, e.item))
+		logDebug(string.format("onUnequipped: Skipping - item %s (%p)", e.item.name, e.item))
 		return
 	end
 
 	currentMenu.currentEquippedTool = nil
 
-	-- TEST prevent menu to stay displayed with manual unequip
+	-- prevent menu to stay displayed with manual unequip
 	destroyWindow()
 	if (e.itemData.condition > 0) then
 		-- case disarm or unlock ?
-		logDebug(string.format("onUnequippedBis: tool %s OK, condition %d", e.item.name, e.itemData.condition))
+		logDebug(string.format("onUnequipped: tool %s OK, condition %d", e.item.name, e.itemData.condition))
 
 		--TODO Pb quand on change d'arme => unequipped lockpick => getLockpick
 		if tes3.getLocked({ reference = currentTarget.target }) then
@@ -918,7 +900,7 @@ local function onUnequippedBis(e)
 	else
 		-- broken tool
 		-- condition = 0
-		logDebug(string.format("onUnequippedBis: Broken tool %s", e.item.name))
+		logDebug(string.format("onUnequipped: Broken tool %s", e.item.name))
 
 	if tes3.getTrap({ reference = currentTarget.target }) then
 			getProbe(currentTarget.target)
@@ -934,8 +916,9 @@ local function onUnequippedBis(e)
 end
 
 
+---manage activationTargetChanged events by opening selection menu if needed
 ---@param e any activationTargetChanged event object
-local function onActivationTargetChangedBis(e)
+local function onActivationTargetChanged(e)
 	local target=nil
 
 	-- TODO returns key instead ?
@@ -976,7 +959,7 @@ local function onActivationTargetChangedBis(e)
 		return
 	end
 
-	logDebug(string.format("Event onActivationTargetChangedBis: Current = %p and Previous = %p", e.current, e.previous))
+	logDebug(string.format("Event onActivationTargetChanged: Current = %p and Previous = %p", e.current, e.previous))
 
 	-- currently equiping tool no need to do something
 	if currentMenu.isEquipping then
@@ -997,14 +980,14 @@ local function onActivationTargetChangedBis(e)
 
 	if tes3.getTrap({ reference = target }) then
 		-- Trapped
-		logDebug(string.format("onActivationTargetChangedBis: trapped"))
+		logDebug(string.format("onActivationTargetChanged: trapped"))
 		if not isProbeEquipped() then
 			--
 			getProbe(target)
 		end
 	elseif tes3.getLocked({ reference = target }) then
 		-- Locked
-		logDebug(string.format("onActivationTargetChangedBis: locked"))
+		logDebug(string.format("onActivationTargetChanged: locked"))
 		--TODO move playerHasKey to getLockpick
 		if not playerHasKey() then
 			if not isLockpickEquipped() then
@@ -1022,7 +1005,7 @@ local function onActivationTargetChangedBis(e)
 		end
 	else
 		-- Not trapped or locked
-		logDebug(string.format("onActivationTargetChangedBis: %s Not trapped or locked", target))
+		logDebug(string.format("onActivationTargetChanged: %s Not trapped or locked", target))
 		destroyWindow()
 
 		if target == currentTarget.target then
@@ -1045,11 +1028,10 @@ end
 --- Initialization register the events and the GUID for menu
 local function initialize()
 	-- registers needed events, better to use tes.event reference instead of the name https://mwse.github.io/MWSE/references/events/
-	--event.register(tes3.event.activationTargetChanged, onActivationTargetChanged)
-	event.register(tes3.event.activationTargetChanged, onActivationTargetChangedBis)
+	event.register(tes3.event.activationTargetChanged, onActivationTargetChanged)
 
 	--event.register(tes3.event.unequipped, onUnequipped)
-	event.register(tes3.event.unequipped, onUnequippedBis)
+	event.register(tes3.event.unequipped, onUnequipped)
 	event.register(tes3.event.menuEnter, onMenuEnter)
 
 	-- TODO register only when menu is displayed (createWindow)
@@ -1081,9 +1063,10 @@ event.register(tes3.event.initialized, initialize)
 
 --#region MCM
 
----
--- @param id name of the variable
--- @return a TableVariable
+
+---comment
+---@param id any name of the variable
+---@return table a TableVariable
 local function createtableVar(id)
 	return mwse.mcm.createTableVariable{
 		id = id,
@@ -1093,19 +1076,16 @@ end
 
 
 --- Create the MCM menu
--- Basic UI, more fancier can be created like hiding parts of UI based on settings
--- UI should be transalated also
 local function registerModConfig()
     local template = mwse.mcm.createTemplate(modName)
 	template:saveOnClose(modConfig, config)
-	
+
 	-- https://easymcm.readthedocs.io/en/latest/components/pages/classes/SideBarPage.html
 	local page = template:createSideBarPage{
 		label = "Sidebar Page",
 		description = modName .. " " .. modVersion .. " (c) by " .. modAuthor
 	}
 
-	-- You can create categories to group settings
 	-- https://easymcm.readthedocs.io/en/latest/components/categories/classes/Category.html
 	local catMain = page:createCategory(modName)
 	catMain:createYesNoButton {
