@@ -224,6 +224,38 @@ local function previousTool()
 end
 
 
+local function searchUnlockScroll()
+	local inventory = tes3.player.object.inventory
+	local toolsTable = {}
+
+	for _, stack in pairs(inventory) do
+		if stack.object.objectType == tes3.objectType.book then
+			local book = stack.object
+			-- https://mwse.github.io/MWSE/types/tes3book/
+			if book.type == tes3.bookType.scroll  and (book.enchantment) then
+				for _, effect in ipairs(book.enchantment.effects) do
+					if effect.id == tes3.effect.open then
+						toolsTable[book.name]={}
+						toolsTable[book.name].tool = book
+						toolsTable[book.name].name = book.name
+						toolsTable[book.name].quality = effect.cost
+						toolsTable[book.name].count = stack.count
+						toolsTable[book.name].curChance = 80.0
+						toolsTable[book.name].fullChance = 100.0
+
+						--effect.object.baseMagickaCost
+						--effect.object.bigIcon
+						logDebug(string.format("searchUnlockScroll: adding %s, %p, cost %.2f, baseMagickaCost %.2f", book.name, book, effect.cost, effect.object.baseMagickaCost))
+					end
+				end
+			end
+		end
+	end
+
+	return toolsTable
+end
+
+
 --- Search in the inventory for lockpicks or probes with a minimal quality
 -- @param true to search probes, false to search lockpicks
 -- @param minQual minimal quality of the tool requested
@@ -233,6 +265,13 @@ local function searchTools(searchProbes, minQual)
 
 	local toolsTable = {}
 	local objectTypeToSearch
+
+	--TODO Add
+	if searchProbes then
+		local objectType = { [tes3.objectType.probe]=true }
+	else
+		local objectType = { [tes3.objectType.lockpick]=true, [tes3.objectType.book]=true }
+	end
 
 	if searchProbes then
 		objectTypeToSearch = tes3.objectType.probe
@@ -247,7 +286,7 @@ local function searchTools(searchProbes, minQual)
 			local toolName = tool.name
 			local toolQuality = tool.quality
 
-			logDebug(string.format("Found probe %s - %p (%.2f)",toolName, tool, toolQuality))
+			logDebug(string.format("Found tool %s - %p (%.2f)",toolName, tool, toolQuality))
 
 			-- check min quality
 			if toolQuality >= minQual then
@@ -262,7 +301,10 @@ local function searchTools(searchProbes, minQual)
 		end
 	end
 
-	return toolsTable
+	-- DEBUG
+	return searchUnlockScroll()
+
+	--return toolsTable
 end
 
 
@@ -324,6 +366,52 @@ local function uiActivatedCallback(e)
 end
 
 
+local function scanInventory()
+	local inventory = tes3.player.object.inventory
+	for _, stack in pairs(inventory) do
+		-- stack is https://mwse.github.io/MWSE/types/tes3itemStack/
+		logDebug(string.format("scanInventory: object %s (%s), type %d", stack.object.name, stack.object.id, stack.object.objectType))
+
+		if stack.object.objectType == tes3.objectType.spell then
+			-- 1279610963
+			local spell = stack.object
+			logDebug(string.format("scanInventory: Spell magickaCost %d", spell.magickaCost))
+
+			-- parse effects
+			for _, effect in ipairs(spell.effects) do
+				logDebug(string.format("scanInventory: Spell magickaCost %d, effect %d", spell.magickaCost, effect.id))
+			end
+		end
+
+		if stack.object.objectType == tes3.objectType.book then
+			local book = stack.object
+			-- https://mwse.github.io/MWSE/types/tes3book/
+			if book.type == tes3.bookType.scroll then
+				logDebug(string.format("scanInventory: scroll"))
+
+				if (book.enchantment) then
+					for _, effect in ipairs(book.enchantment.effects) do
+						--WARNING Something makes MORROWIND crash when accessing effects info (id < 0)
+						--TODO Isolate scanDirectory function in stand alone script
+						--logDebug(string.format("scanInventory: scroll effect id %d, cost %d", effect.id, effect.cost))
+						--logDebug(string.format("scanInventory: scroll effect id %d", effect.id))
+						--WARNING there are effects with id -1 that make Morrowind crash while accessing effect cost
+						if effect.id >= 0 then
+							logDebug(string.format("scanInventory: scroll effect id %d, cost %.2f", effect.id, effect.cost))
+							--local cost = effect.cost
+							--local id = effect.id
+							--logDebug(string.format("scanInventory: scroll effect cost %.2f", effect.cost))
+						end
+					end
+				end
+			else
+				logDebug(string.format("scanInventory: book"))
+			end
+		end
+	end
+end
+
+
 --- Create the window if there are items to select
 -- @param isProbe true if we need to select a probe, false for a lockpick
 local function createWindow(isProbe)
@@ -380,9 +468,11 @@ local function createWindow(isProbe)
 	-- https://mwse.github.io/MWSE/types/tes3lockNode/
 
 	-- TODO use searchTools funtion
+
 	--local objectTypeToSearh
 	local inventory = tes3.player.object.inventory
 	local itemsCount = 0
+
 	for _, v in pairs(inventory) do
         if v.object.objectType == objectTypeToSearch then
 			-- Our container block for this item.
@@ -679,6 +769,8 @@ local function onActivationTargetChanged(e)
 	-- TODO store locknode for locklevel
 	searchTools(true, 0)
 	searchTools(false, 0)
+
+	scanInventory()
 
 	if currentTarget.isTrapped then
 		tes3.messageBox("Trapped")
