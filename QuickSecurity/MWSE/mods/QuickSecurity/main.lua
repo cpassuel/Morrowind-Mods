@@ -1,10 +1,11 @@
 --[[
 	Quick Security
 	@author		
-	@version	1.0.0
+	@version	1.0.1
 	@changelog	1.0.0 Initial version
+	@changelog	1.0.1 Activate mod at the first addition in the journal (so after char generation)
     
-	TODO check behaviour with Equip Script fix in MCP
+	TODO check behaviour with Equip Script fix in MCP https://mwse.github.io/MWSE/references/code-patch-features/
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
 
 --]]
@@ -12,7 +13,7 @@
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V1.0.0"
+local modVersion = "V1.0.1?"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
@@ -68,6 +69,7 @@ local playerAttribute = {
 	fPickLockMult = 0
 }
 
+local activatemod = false	-- to prevent mod activation before character creation
 
 --[[
 
@@ -205,7 +207,7 @@ local function previousTool()
 end
 
 
---- Compute and save current player stats 
+--- Compute and save current player stats in playerAttribute structure
 local function getPlayerStats()
 	-- skill and attributes
 	local player = tes3.mobilePlayer
@@ -236,7 +238,7 @@ end
 
 ---Compute the chance to unlock a door/container given the toolQuality and the locklevel in parameter
 ---@param toolQuality number quality of the lockpick
----@param locklevel number level of the lock
+---@param locklevel number level of the lock (0?-100)
 ---@return number curChance, number fullChance returns the chance to unlock the object with current and full fatigue (can be negative)
 local function getUnlockChance(toolQuality, locklevel)
 	-- Lockpick
@@ -754,6 +756,30 @@ local function onTrapDisarm(e)
 end
 
 
+---https://mwse.github.io/MWSE/events/journal/
+---Called for the first journal event (1st addition to the journal)
+---@param e any journal object event
+local function onJournal(e)
+	activatemod = true
+	-- no need journal events anymore
+	event.unregister("journal", onJournal)
+end
+
+
+--- https://mwse.github.io/MWSE/events/loaded/
+---Disable mod on new games 
+---@param e any loaded object event
+local function onLoaded(e)
+	if e.newGame then
+		activatemod = false
+		-- register journal event to detect first addition to the journal
+		event.register("journal", onJournal)
+	else
+		activatemod = true
+	end
+end
+
+
 ---https://mwse.github.io/MWSE/events/activate/
 ---Prevent the activation of the trap when equipping a probe
 ---@param e any onActivate object
@@ -867,6 +893,11 @@ end
 ---manage unEquipped events by opening selection menu if needed
 ---@param e any event
 local function onUnequipped(e)
+	-- prevents activation before chargen
+	if not activatemod then
+		return
+	end
+
 	if not config.modEnabled then
 		return
 	end
@@ -953,6 +984,11 @@ local function onActivationTargetChanged(e)
 
 	local function isLockpickEquipped()
 		return tes3.getEquippedItem({ actor = tes3.player, objectType = tes3.objectType.lockpick })
+	end
+
+	-- prevents activation before chargen
+	if not activatemod then
+		return
 	end
 
 	if not config.modEnabled then
@@ -1049,6 +1085,8 @@ local function initialize()
 	GUIID_TestUI_ContentBlock = tes3ui.registerID(modName .. ":ContentBlock")
 	GUIID_TestUI_ItemBlock = tes3ui.registerID(modName .. ":ItemBlock")
 	GUIID_TestUI_ItemBlockLabel = tes3ui.registerID(modName .. ":ItemBlockLabel")
+
+	event.register(tes3.event.loaded, onLoaded)
 
 	logInfo(modName .. " " .. modVersion .. " initialized")
 end
