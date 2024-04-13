@@ -26,9 +26,11 @@ complete rewrite of the mod. There are also some lacks in OpenMW implementation
 ## Quick Security
 
 This mod that allows you to select lockpicks or probes from a selection list instead
-having to go in inventory to select it and equip it.
+of having to go in inventory to select it and equip it.
 
 This mod is available on Nexus Mods https://www.nexusmods.com/morrowind/mods/52918
+
+There is an equivalement for OpenMW https://www.nexusmods.com/morrowind/mods/53094 (not tested)
 
 ## Sample Mod
 
@@ -44,6 +46,6 @@ This mod is available on Nexus Mods https://www.nexusmods.com/morrowind/mods/527
 
 Test for auto-equip lockpit / probe
 
-## Lockpick Probe Hotkey
+## Test UI
 
 Test UI and how to manage it
