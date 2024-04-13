@@ -3,7 +3,7 @@
 	@author		
 	@version	1.0.1
 	@changelog	1.0.0 Initial version
-	@changelog	1.0.1 Activate mod at the first addition in the journal (so after char generation)
+	@changelog	1.0.1 Activate mod at the first addition in the journal, so after char generation (issues/1) and off center menu (issues/2)
     
 	TODO check behaviour with Equip Script fix in MCP https://mwse.github.io/MWSE/references/code-patch-features/
 	TODO Restore weapon when another target is activated (! nil) if previously selected tool is stil equipped, add an option to disable this behavior ?
@@ -13,7 +13,7 @@
 -- mod informations
 local modName = "Quick Security"
 local modFolder = "QuickSecurity"	-- this way can have a different name for the mod folder
-local modVersion = "V1.0.1?"
+local modVersion = "V1.0.1"
 local modConfig = modName	-- file name for MCM config file
 local modAuthor= "Thinuviel"
 
@@ -587,7 +587,7 @@ local function updateTitle(isProbe)
 end
 
 
----Create the menu with the tools list from the table in paramter
+---Create the menu with the tools list from the table in parameter
 ---@param toolsTable table of tools to display (MUST NOT BE EMPTY)
 local function createWindow(toolsTable)
 	if tes3.menuMode() then
@@ -606,8 +606,10 @@ local function createWindow(toolsTable)
         return
 	end
 
-	-- Create window and frame
+	-- Create window and frame (off center)
 	local menu = tes3ui.createMenu{ id = GUIID_Menu, fixedFrame = true }
+	menu.absolutePosAlignX = 0.6 --DEJEDIT
+	menu.absolutePosAlignY = 0.6 --DEJEDIT
 	currentMenu.window = menu
 
 	-- To avoid low contrast, text input windows should not use menu transparency settings
