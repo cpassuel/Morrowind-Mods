@@ -6,7 +6,7 @@ description = "This mod allows you to select lockpicks or probes from a selectio
 homepage = "https://www.nexusmods.com/morrowind/mods/52918"
 repository = "https://github.com/cpassuel/Morrowind-Mods"
 authors = ["Thinuviel"]
-version = "1.0.0"
+version = "1.0.1"
 
 # MWSE specific information about this mod
 [tools.mwse]

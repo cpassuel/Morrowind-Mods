@@ -1,7 +1,7 @@
 =====================================================================================
                                     Quick Security                                     
                                    Author: cpassuel
-                                     Version 1.0.0
+                                     Version 1.0.1
 =====================================================================================
 
  INDEX:
@@ -73,7 +73,7 @@
  
  Please report any issues on the Nexus page https://www.nexusmods.com/morrowind/mods/52918
 
- The german translation was done with Google transalate so feel free to send me a better
+ The german translation was done with Google translate so feel free to send me a better
  translation
 
 =====================================================================================
@@ -81,6 +81,8 @@
 =====================================================================================
 
  1.0.0   [2023-06-27]: Initial release
+ 1.0.1   [2024-04-14]: Minor update - Activate mod at the first addition in the journal,
+                       so after char generation (issues/1) and off center menu (issues/2)
 
  =====================================================================================
  INCOMPATIBILITIES & SAVED GAME WARNINGS:
